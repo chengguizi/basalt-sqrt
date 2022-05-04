@@ -35,7 +35,7 @@ using namespace std;
 
 namespace AprilTags {
 
-std::vector<TagDetection> TagDetector::extractTags(const cv::Mat &image) {
+std::vector<TagDetection> TagDetector::extractTags(const cv::Mat &image, int startId) {
   // convert to internal AprilTags image (todo: slow, change internally to
   // OpenCV)
   int width = image.cols;
@@ -606,6 +606,14 @@ std::vector<TagDetection> TagDetector::extractTags(const cv::Mat &image) {
   // " segments=" << segments.size()
   //     << " quads=" << quads.size() << " detections=" << detections.size() <<
   //     " unique tags=" << goodDetections.size() << endl;
+
+  // offset the detected id by subracting the starting ID
+
+  for (auto& detection : goodDetections) {
+    detection.id = detection.id - startId;
+    if (detection.id < 0)
+      throw std::runtime_error("Id smaller than 0 detected, impossible");
+  }
 
   return goodDetections;
 }

@@ -36,8 +36,9 @@ struct ApriltagDetectorData {
   inline int size() { return _numTags * 4; }
 };
 
-ApriltagDetector::ApriltagDetector(int numTags) {
+ApriltagDetector::ApriltagDetector(int numTags, int startId) {
   data = new ApriltagDetectorData(numTags);
+  _startId = startId;
 }
 
 ApriltagDetector::~ApriltagDetector() { delete data; }
@@ -66,7 +67,7 @@ void ApriltagDetector::detectTags(
 
   // detect the tags
   std::vector<AprilTags::TagDetection> detections =
-      data->_tagDetector->extractTags(image);
+      data->_tagDetector->extractTags(image, _startId);
 
   /* handle the case in which a tag is identified but not all tag
    * corners are in the image (all data bits in image but border

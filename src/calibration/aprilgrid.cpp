@@ -49,6 +49,7 @@ AprilGrid::AprilGrid(const std::string &config_path) {
     ar(cereal::make_nvp("tagRows", tagRows));
     ar(cereal::make_nvp("tagSize", tagSize));
     ar(cereal::make_nvp("tagSpacing", tagSpacing));
+    ar(cereal::make_nvp("lowId", lowId));
   } else {
     std::cerr << "Could not open aprilgrid configuration: " << config_path
               << std::endl;
