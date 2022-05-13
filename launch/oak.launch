@@ -1,0 +1,32 @@
+<launch>
+<arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
+<arg name="vehicle" default="$(arg _uav_id)"/>
+<arg name="calib_file" default="oak/pinhole-$(arg vehicle).json"/>
+<arg name="show_gui" default="false"/>
+
+<node ns="$(arg vehicle)" pkg="basalt" type="basalt_vio_ros" name="basalt_vio_ros" output="screen" respawn="false">
+    <remap from="/mavros/imu/data/sys_id_9" to ="/$(arg vehicle)/oak_ros/oak1/imu"/>  
+    <remap from="/zed/left/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/left/image_rect_raw"/>  
+    <remap from="/zed/right/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/right/image_rect_raw"/>  
+    <remap from="/zed/left/camera_info_raw" to ="/$(arg vehicle)/oak_ros/oak1/left/camera_info"/>  
+    <remap from="/zed/right/camera_info_raw" to ="/$(arg vehicle)/oak_ros/oak1/right/camera_info"/>  
+
+    <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
+    <param name="calib_file" type = "string" value="$(find basalt)/data/$(arg calib_file)"/> 
+    <param name="config_path" type = "string" value="$(find basalt)/data/oak_config.json"/> 
+    <param name= "publish_tf" value="false"/>
+    <param name= "show_gui" value="$(arg show_gui)"/>
+    <param name= "print_queue" value="false"/>
+    <param name= "terminate" value="false"/>
+    <param name= "use_imu" value="true"/>
+
+    <param name= "T_i_b/quaternion/w" value="0.7518398"/>
+    <param name= "T_i_b/quaternion/x" value="0"/>
+    <param name= "T_i_b/quaternion/y" value="0.6593458"/>
+    <param name= "T_i_b/quaternion/z" value="0"/>
+    <param name= "T_i_b/translation/x" value="0"/>
+    <param name= "T_i_b/translation/y" value="0.0375"/>
+    <param name= "T_i_b/translation/z" value="0.07"/>
+</node>
+
+</launch>

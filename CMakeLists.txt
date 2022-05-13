@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10...3.18)
 
-project(basalt)
+project(basalt-sqrt)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/" ${CMAKE_MODULE_PATH})
 
@@ -274,6 +274,17 @@ set_property(TARGET basalt::opencv PROPERTY INTERFACE_LINK_LIBRARIES ${OpenCV_LI
 find_package(fmt REQUIRED)
 message(STATUS "Found {fmt} ${fmt_VERSION} in: ${fmt_DIR}")
 
+find_package(catkin REQUIRED COMPONENTS
+    roscpp
+    geometry_msgs
+    nav_msgs
+    image_transport
+    message_filters
+    cv_bridge
+)
+# include_directories(${catkin_INCLUDE_DIRS})
+catkin_package()
+
 add_subdirectory(thirdparty)
 
 # custom scoped cli11 target
@@ -413,6 +424,9 @@ target_link_libraries(basalt_opt_flow basalt pangolin basalt::cli11)
 
 add_executable(basalt_vio src/vio.cpp)
 target_link_libraries(basalt_vio basalt pangolin basalt::cli11)
+
+# add_executable(basalt_ros_live src/ros_live_vio.cpp)
+# target_link_libraries(basalt_vio basalt pangolin basalt::cli11)
 
 add_executable(basalt_time_alignment src/time_alignment.cpp)
 target_link_libraries(basalt_time_alignment basalt pangolin basalt::cli11)
