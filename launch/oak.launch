@@ -4,7 +4,7 @@
 <arg name="calib_file" default="oak/pinhole-$(arg vehicle).json"/>
 <arg name="show_gui" default="false"/>
 
-<node ns="$(arg vehicle)" pkg="basalt" type="basalt_vio_ros" name="basalt_vio_ros" output="screen" respawn="false">
+<node ns="$(arg vehicle)" pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
     <remap from="/mavros/imu/data/sys_id_9" to ="/$(arg vehicle)/oak_ros/oak1/imu"/>  
     <remap from="/zed/left/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/left/image_rect_raw"/>  
     <remap from="/zed/right/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/right/image_rect_raw"/>  
@@ -12,8 +12,8 @@
     <remap from="/zed/right/camera_info_raw" to ="/$(arg vehicle)/oak_ros/oak1/right/camera_info"/>  
 
     <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
-    <param name="calib_file" type = "string" value="$(find basalt)/data/$(arg calib_file)"/> 
-    <param name="config_path" type = "string" value="$(find basalt)/data/oak_config.json"/> 
+    <param name="calib_file" type = "string" value="$(find basalt-sqrt)/data/$(arg calib_file)"/> 
+    <param name="config_path" type = "string" value="$(find basalt-sqrt)/data/oak_config.json"/> 
     <param name= "publish_tf" value="false"/>
     <param name= "show_gui" value="$(arg show_gui)"/>
     <param name= "print_queue" value="false"/>

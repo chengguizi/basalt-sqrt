@@ -68,8 +68,8 @@ pangolin::Var<bool> follow("ui.follow", true, false, true);
 basalt::VioVisualizationData::Ptr curr_vis_data;
 
 tbb::concurrent_bounded_queue<basalt::VioVisualizationData::Ptr> out_vis_queue;
-tbb::concurrent_bounded_queue<basalt::PoseVelBiasState::Ptr> out_state_queue;
-tbb::concurrent_bounded_queue<basalt::ImuData::Ptr>* imu_data_queue = nullptr;
+tbb::concurrent_bounded_queue<basalt::PoseVelBiasState<double>::Ptr> out_state_queue;
+tbb::concurrent_bounded_queue<basalt::ImuData<double>::Ptr>* imu_data_queue = nullptr;
 
 std::vector<int64_t> vio_t_ns;
 Eigen::aligned_vector<Eigen::Vector3d> vio_t_w_i;
@@ -105,7 +105,7 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
   }
   pre_imu_seq = imu_msg->header.seq;
 
-  basalt::ImuData::Ptr data(new basalt::ImuData);
+  basalt::ImuData<double>::Ptr data(new basalt::ImuData<double>);
   data->t_ns = imu_msg->header.stamp.toNSec();
 
   // 1 second jump
@@ -159,12 +159,14 @@ int main(int argc, char** argv) {
   bool print_queue = false;
   int num_threads = 0;
   bool use_imu = true;
+  bool use_double = false;
   local_nh.param<std::string>("calib_file", cam_calib_path, "basalt_ws/src/basalt/data/zed_calib.json");
   local_nh.param<std::string>("config_path", config_path, "basalt_ws/src/basalt/data/zed_config.json");
   local_nh.param("show_gui", show_gui, true);
   local_nh.param("print_queue", print_queue, false);
   local_nh.param("terminate", terminate, false);
   local_nh.param("use_imu", use_imu, true);
+  local_nh.param("use_double", use_double, false);
 
   if (!config_path.empty()) {
     vio_config.load(config_path);
@@ -202,7 +204,7 @@ int main(int argc, char** argv) {
   stereo_sub.image_data_queue = &opt_flow_ptr->input_queue;
 
   vio = basalt::VioEstimatorFactory::getVioEstimator(
-      vio_config, calib, basalt::constants::g, use_imu);
+      vio_config, calib, basalt::constants::g, use_imu, use_double);
 
   vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
   imu_data_queue = &vio->imu_data_queue;
@@ -234,7 +236,7 @@ int main(int argc, char** argv) {
   ros::Publisher odom_ned_pub = nh.advertise<nav_msgs::Odometry>("/basalt/odom_ned", 10);
 
   std::thread t4([&]() {
-    basalt::PoseVelBiasState::Ptr data;
+    basalt::PoseVelBiasState<double>::Ptr data;
 
     try{
 
@@ -625,16 +627,16 @@ void draw_image_overlay(pangolin::View& v, size_t cam_id) {
 
           pangolin::glDrawCircle(vec, 1.0);
 
-          if(vio_config.vio_debug){
-            if(!calib.intrinsics[cam_id].inBound(c.head(2))){
-              std::cout << c.transpose() << " optimised point is out of bound at cam " << cam_id << std::endl;
-              // abort();
-            }
-            if(!calib.intrinsics[cam_id].inBound(vec)){
-              std::cout << vec << " flow obs is out of bound at cam " << cam_id << std::endl;
-              abort();
-            }
-          }
+          // if(vio_config.vio_debug){
+          //   if(!calib.intrinsics[cam_id].inBound(c.head(2))){
+          //     std::cout << c.transpose() << " optimised point is out of bound at cam " << cam_id << std::endl;
+          //     // abort();
+          //   }
+          //   if(!calib.intrinsics[cam_id].inBound(vec)){
+          //     std::cout << vec << " flow obs is out of bound at cam " << cam_id << std::endl;
+          //     abort();
+          //   }
+          // }
           pangolin::glDrawLine(c[0], c[1],vec[0], vec[1]);
           
         }
