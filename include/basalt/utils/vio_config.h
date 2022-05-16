@@ -53,6 +53,7 @@ struct VioConfig {
   int optical_flow_levels;
   float optical_flow_epipolar_error;
   int optical_flow_skip_frames;
+  bool feature_match_show; //Yu: add feature match show func for debug
 
   LinearizationType vio_linearization_type;
   bool vio_sqrt_marg;

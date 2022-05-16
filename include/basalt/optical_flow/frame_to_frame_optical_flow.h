@@ -49,6 +49,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/image/image_pyr.h>
 #include <basalt/utils/keypoints.h>
 
+#include <opencv2/features2d.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+
 namespace basalt {
 
 /// Unlike PatchOpticalFlow, FrameToFrameOpticalFlow always tracks patches
@@ -161,7 +165,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       for (size_t i = 0; i < calib.intrinsics.size(); i++) {
         trackPoints(old_pyramid->at(i), pyramid->at(i),
                     transforms->observations[i],
-                    new_transforms->observations[i]);
+                    new_transforms->observations[i], i, i);
       }
 
       transforms = new_transforms;
@@ -169,6 +173,47 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       addPoints();
       filterPoints();
+
+      //draw matching points
+      if(config.feature_match_show){
+        std::vector<cv::KeyPoint> kp1, kp2, kp0;
+        std::vector<cv::DMatch> match;
+        int match_id = 0;
+        basalt::Image<const uint16_t> img_raw_1(pyramid->at(0).lvl(1)), img_raw_2(pyramid->at(1).lvl(1));
+        int w = img_raw_1.w; 
+        int h = img_raw_1.h;
+        cv::Mat img1(h, w, CV_8U);
+        cv::Mat img2(h, w, CV_8U);
+        for(int y = 0; y < h; y++){
+          uchar* sub_ptr_1 = img1.ptr(y);
+          uchar* sub_ptr_2 = img2.ptr(y);
+
+          for(int x = 0; x < w; x++){
+            sub_ptr_1[x] = (img_raw_1(x,y) >> 8);
+            sub_ptr_2[x] = (img_raw_2(x,y) >> 8);
+
+          }
+        }
+
+        for(const auto& kv: transforms->observations[0]){
+          auto it = transforms->observations[1].find(kv.first);
+          if(it != transforms->observations[1].end()){
+            
+            kp1.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
+            kp2.push_back(cv::KeyPoint(cv::Point2f(it->second.translation()[0]/2, it->second.translation()[1]/2), 1));
+            match.push_back(cv::DMatch(match_id,match_id,1));
+            match_id++;
+          }
+          else{
+            kp0.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
+          }
+        }
+        cv::Mat image_show(h, w*2, CV_8U);
+        cv::drawKeypoints(img1, kp0,img1);
+        cv::drawMatches(img1,kp1,img2,kp2,match, image_show);
+        cv::imshow("matching result", image_show);
+        cv::waitKey(1);
+      }
     }
 
     if (output_queue && frame_counter % config.optical_flow_skip_frames == 0) {
@@ -183,7 +228,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                    const Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>&
                        transform_map_1,
                    Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>&
-                       transform_map_2) const {
+                       transform_map_2, int cam_id_1, int cam_id_2) const {
     size_t num_points = transform_map_1.size();
 
     std::vector<KeypointId> ids;
@@ -208,12 +253,37 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         const Eigen::AffineCompact2f& transform_1 = init_vec[r];
         Eigen::AffineCompact2f transform_2 = transform_1;
 
-        bool valid = trackPoint(pyr_1, pyr_2, transform_1, transform_2);
+        if (cam_id_1 != cam_id_2){
+          // hm: we want to modify the tranlation part of the transform, as we have two diff cameras (assume identical time)
+          Eigen::Vector2f t1 = transform_1.translation();
+          Eigen::Vector4f p1_3d;
+          calib.intrinsics[cam_id_1].unproject(t1, p1_3d);
+          Eigen::Vector4f p2_3d = calib.T_i_c[cam_id_2].so3().inverse() * calib.T_i_c[cam_id_1].so3() * p1_3d;
+          Eigen::Vector2f t2;
+          calib.intrinsics[cam_id_2].project(p2_3d, t2);
+
+          transform_2.translation() = t2;
+
+        }
+
+        bool valid = trackPoint(pyr_1, pyr_2, transform_1, transform_2, cam_id_2);
 
         if (valid) {
           Eigen::AffineCompact2f transform_1_recovered = transform_2;
 
-          valid = trackPoint(pyr_2, pyr_1, transform_2, transform_1_recovered);
+          if (cam_id_2 != cam_id_1){
+            // hm: we want to modify the tranlation part of the transform, as we have two diff cameras (assume identical time)
+            Eigen::Vector2f t2 = transform_2.translation();
+            Eigen::Vector4f p2_3d;
+            calib.intrinsics[cam_id_2].unproject(t2, p2_3d);
+            Eigen::Vector4f p1_3d = calib.T_i_c[cam_id_1].so3().inverse() * calib.T_i_c[cam_id_2].so3() * p2_3d;
+            Eigen::Vector2f t1;
+            calib.intrinsics[cam_id_1].project(p1_3d, t1);
+
+            transform_1_recovered.translation() = t1;
+          }
+
+          valid = trackPoint(pyr_2, pyr_1, transform_2, transform_1_recovered, cam_id_1);
 
           if (valid) {
             Scalar dist2 = (transform_1.translation() -
@@ -240,7 +310,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   inline bool trackPoint(const basalt::ManagedImagePyr<uint16_t>& old_pyr,
                          const basalt::ManagedImagePyr<uint16_t>& pyr,
                          const Eigen::AffineCompact2f& old_transform,
-                         Eigen::AffineCompact2f& transform) const {
+                         Eigen::AffineCompact2f& transform, int cam_id_2) const {
     bool patch_valid = true;
 
     transform.linear().setIdentity();
@@ -260,6 +330,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }
 
       transform.translation() *= scale;
+      (void)cam_id_2;
+      // patch_valid &= calib.intrinsics[cam_id_2].inBound(transform.translation());
     }
 
     transform.linear() = old_transform.linear() * transform.linear();
@@ -332,7 +404,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     }
 
     if (calib.intrinsics.size() > 1) {
-      trackPoints(pyramid->at(0), pyramid->at(1), new_poses0, new_poses1);
+      trackPoints(pyramid->at(0), pyramid->at(1), new_poses0, new_poses1, 0, 1);
 
       for (const auto& kv : new_poses1) {
         transforms->observations.at(1).emplace(kv);
