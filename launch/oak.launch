@@ -19,6 +19,7 @@
     <param name= "print_queue" value="false"/>
     <param name= "terminate" value="false"/>
     <param name= "use_imu" value="true"/>
+    <param name= "use_double" value="false"/>
 
     <param name= "T_i_b/quaternion/w" value="0.7518398"/>
     <param name= "T_i_b/quaternion/x" value="0"/>

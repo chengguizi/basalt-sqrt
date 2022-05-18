@@ -203,6 +203,8 @@ int main(int argc, char** argv) {
   opt_flow_ptr = basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
   stereo_sub.image_data_queue = &opt_flow_ptr->input_queue;
 
+  std::cout << "use_double = " << use_double << std::endl;
+  
   vio = basalt::VioEstimatorFactory::getVioEstimator(
       vio_config, calib, basalt::constants::g, use_imu, use_double);
 

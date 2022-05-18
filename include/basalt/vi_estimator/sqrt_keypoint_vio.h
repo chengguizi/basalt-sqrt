@@ -226,6 +226,8 @@ class SqrtKeypointVioEstimator : public VioEstimatorBase,
 
   // Input
 
+  Eigen::Matrix<Scalar, 3, 1> bg_init, ba_init;
+
   Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res;
 
   std::map<int64_t, int> num_points_kf;

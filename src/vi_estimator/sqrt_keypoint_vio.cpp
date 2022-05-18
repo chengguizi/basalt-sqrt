@@ -150,7 +150,14 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(
 template <class Scalar_>
 void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
                                                    const Eigen::Vector3d& ba_) {
-  auto proc_func = [&, bg = bg_.cast<Scalar>(), ba = ba_.cast<Scalar>()] {
+  
+  bg_init = bg_.cast<Scalar>();
+  ba_init = ba_.cast<Scalar>();
+  std::cout << "initialise with initial estimated gyro bias: " << bg_init.transpose() << ", \n accel bias: " <<
+      ba_init.transpose() << std::endl;
+
+  // hm: problematic capture by reference in lambda for passed in temperary objects
+  auto proc_func = [&] {
     OpticalFlowResult::Ptr prev_frame, curr_frame;
     typename IntegratedImuMeasurement<Scalar>::Ptr meas;
 
@@ -196,9 +203,9 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
 
         last_state_t_ns = curr_frame->t_ns;
         imu_meas[last_state_t_ns] =
-            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg, ba);
+            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg_init, ba_init);
         frame_states[last_state_t_ns] = PoseVelBiasStateWithLin<Scalar>(
-            last_state_t_ns, T_w_i_init, vel_w_i_init, bg, ba, true);
+            last_state_t_ns, T_w_i_init, vel_w_i_init, bg_init, ba_init, true);
 
         marg_data.order.abs_order_map[last_state_t_ns] =
             std::make_pair(0, POSE_VEL_BIAS_SIZE);
