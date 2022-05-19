@@ -153,8 +153,11 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
   
   bg_init = bg_.cast<Scalar>();
   ba_init = ba_.cast<Scalar>();
-  std::cout << "initialise with initial estimated gyro bias: " << bg_init.transpose() << ", \n accel bias: " <<
+  std::cout << "initialise with injected gyro bias: " << bg_init.transpose() << ", \n accel bias: " <<
       ba_init.transpose() << std::endl;
+
+  std::cout << "calibration's accel bias = " << calib.calib_accel_bias.getParam().transpose() << std::endl;
+  std::cout << "calibration's gyro bias = " << calib.calib_gyro_bias.getParam().transpose() << std::endl;
 
   // hm: problematic capture by reference in lambda for passed in temperary objects
   auto proc_func = [&] {
