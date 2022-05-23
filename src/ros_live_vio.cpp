@@ -182,7 +182,10 @@ int main(int argc, char** argv) {
   stereoParam.right_info_topic = "/zed/right/camera_info_raw";
   StereoProcessor stereo_sub(vio_config, stereoParam);
   last_img_data = stereo_sub.last_img_data;
-  ros::Subscriber Imusub = nh.subscribe("/mavros/imu/data/sys_id_9", 200, imuCallback); // 2 seconds of buffering
+
+  ros::Subscriber Imusub;
+  if (use_imu)
+    Imusub = nh.subscribe("/mavros/imu/data/sys_id_9", 200, imuCallback); // 2 seconds of buffering
 
   if (num_threads > 0) {
     tbb::task_scheduler_init init(num_threads);
@@ -507,7 +510,12 @@ int main(int argc, char** argv) {
 
       if (follow) {
         if (curr_vis_data.get()) {
-          auto T_w_i = curr_vis_data->states.back();
+          Sophus::SE3d T_w_i;
+          
+          if (use_imu)
+            T_w_i = curr_vis_data->states.back();
+          else
+            T_w_i = curr_vis_data->frames.back();
           T_w_i.so3() = Sophus::SO3d();
 
           camera.Follow(T_w_i.matrix());
@@ -672,9 +680,9 @@ void draw_scene(basalt::VioVisualizationData::Ptr curr_vis_data) {
       for (const auto& t_i_c : calib.T_i_c)
         render_camera((p * t_i_c).matrix(), 2.0f, pose_color, 0.1f);
 
-    for (const auto& t_i_c : calib.T_i_c)
-      render_camera((curr_vis_data->states.back() * t_i_c).matrix(), 2.0f,
-                    cam_color, 0.1f);
+    // for (const auto& t_i_c : calib.T_i_c)
+    //   render_camera((curr_vis_data->states.back() * t_i_c).matrix(), 2.0f,
+    //                 cam_color, 0.1f);
 
     glColor3ubv(pose_color);
     pangolin::glDrawPoints(curr_vis_data->points);
