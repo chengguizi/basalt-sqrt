@@ -2,9 +2,9 @@
 <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
 <arg name="vehicle" default="$(arg _uav_id)"/>
 <arg name="calib_file" default="4cam/4cam.json"/>
-<arg name="show_gui" default="true"/>
+<arg name="show_gui" default="false"/>
 
-<node pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
+<node ns="$(arg vehicle)" pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
     <remap from="/mavros/imu/data/sys_id_9" to ="/$(arg vehicle)/oak_ros/oak1/imu"/>  
     <remap from="/zed/left/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/left/image_rect_raw"/>  
     <remap from="/zed/right/image_raw_color" to ="/$(arg vehicle)/oak_ros/oak1/rgb/image_rect_raw"/>  
