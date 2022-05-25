@@ -62,6 +62,11 @@ struct OpticalFlowResult {
   using Ptr = std::shared_ptr<OpticalFlowResult>;
 
   int64_t t_ns;
+
+  // hm: record of ids that are newly added, and those are at least 2 image seq old
+  KeypointId last_keypoint_id;
+  KeypointId pre_last_keypoint_id;
+  
   std::vector<Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>>
       observations;
 

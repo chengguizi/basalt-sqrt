@@ -141,6 +141,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       addPoints();
       filterPoints();
 
+      BASALT_ASSERT(transforms->pre_last_keypoint_id == 0);
+
     } else {
       t_ns = curr_t_ns;
 
@@ -215,6 +217,10 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         cv::waitKey(1);
       }
     }
+
+    // hm: addtional metadata regarding the ids that are newly added
+    transforms->last_keypoint_id = last_keypoint_id;
+    transforms->pre_last_keypoint_id = pre_last_keypoint_id;
 
     if (output_queue && frame_counter % config.optical_flow_skip_frames == 0) {
       output_queue->push(transforms);
@@ -378,6 +384,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   }
 
   void addPoints() {
+    pre_last_keypoint_id = last_keypoint_id;
     Eigen::aligned_vector<Eigen::Vector2d> pts0;
 
     for (const auto& kv : transforms->observations.at(0)) {
@@ -461,6 +468,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   size_t frame_counter;
 
   KeypointId last_keypoint_id;
+  // hm: this is to keep track of the last keypoint id from the previous timestamp
+  KeypointId pre_last_keypoint_id;
 
   VioConfig config;
   basalt::Calibration<Scalar> calib;

@@ -38,6 +38,8 @@
 #include <sensor_msgs/Imu.h>
 #include <basalt/io/stereo_processor.h>
 
+#include <tf2_ros/transform_broadcaster.h>
+
 // GUI functions
 void draw_image_overlay(pangolin::View& v, size_t cam_id);
 void draw_scene(basalt::VioVisualizationData::Ptr);
@@ -73,6 +75,9 @@ tbb::concurrent_bounded_queue<basalt::ImuData<double>::Ptr>* imu_data_queue = nu
 
 std::vector<int64_t> vio_t_ns;
 Eigen::aligned_vector<Eigen::Vector3d> vio_t_w_i;
+
+std::string tf_prefix;
+bool publish_tf = false;
 
 std::mutex m;
 bool step_by_step = false;
@@ -142,7 +147,8 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
       //   std::cout<< "got imu msg at time "<< imu_msg->header.stamp <<std::endl;
     }
     else{
-      std::cout<<"imu data buffer is full: "<<imu_data_queue->size()<<std::endl;
+
+      ROS_INFO_STREAM_THROTTLE(5.0, "imu data buffer is full: "<<imu_data_queue->size());
       // abort();
     }
   }
@@ -160,6 +166,40 @@ int main(int argc, char** argv) {
   int num_threads = 0;
   bool use_imu = true;
   bool use_double = false;
+
+
+  Eigen::Quaternion<double> T_i_b_q;
+  Eigen::Vector3d T_i_b_t;
+
+  {
+      double x, y, z, w;
+
+      local_nh.param("T_i_b/quaternion/w", w, 1.0);
+      local_nh.param("T_i_b/quaternion/x", x, 0.0);
+      local_nh.param("T_i_b/quaternion/y", y, 0.0);
+      local_nh.param("T_i_b/quaternion/z", z, 0.0);
+
+      T_i_b_q.w() = w;
+      T_i_b_q.x() = x;
+      T_i_b_q.y() = y;
+      T_i_b_q.z() = z;
+  }
+
+  local_nh.param("T_i_b/translation/x", T_i_b_t[0], 0.0);
+  local_nh.param("T_i_b/translation/y", T_i_b_t[1], 0.0);
+  local_nh.param("T_i_b/translation/z", T_i_b_t[2], 0.0);
+
+  // change of coordinates body frame (NWU) to imu frame (essentially
+  // extrinsic calibration body in imu frame)
+
+  Sophus::SE3d T_i_b;
+  T_i_b.setQuaternion(T_i_b_q);
+  T_i_b.translation() = T_i_b_t;
+
+  std::cout << "The transformation matrix of T_i_b is\n" << T_i_b.matrix();
+
+
+
   local_nh.param<std::string>("calib_file", cam_calib_path, "basalt_ws/src/basalt/data/zed_calib.json");
   local_nh.param<std::string>("config_path", config_path, "basalt_ws/src/basalt/data/zed_config.json");
   local_nh.param("show_gui", show_gui, true);
@@ -167,6 +207,8 @@ int main(int argc, char** argv) {
   local_nh.param("terminate", terminate, false);
   local_nh.param("use_imu", use_imu, true);
   local_nh.param("use_double", use_double, false);
+  local_nh.param<std::string>("tf_prefix", tf_prefix, "");
+  local_nh.param("publish_tf", publish_tf, false);
 
   if (!config_path.empty()) {
     vio_config.load(config_path);
@@ -233,12 +275,14 @@ int main(int argc, char** argv) {
   //     std::cout << "Finished t3" << std::endl;
   //   }));
 
-  ros::Publisher pose_cov_pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("/basalt/pose_nwu", 10);
-  ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("/basalt/pose_cov_nwu", 10);
-  ros::Publisher pose_map_pub = nh.advertise<geometry_msgs::PoseStamped>("/basalt/pose_enu", 10);
-  ros::Publisher pose_cov_map_pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("/basalt/pose_cov_enu", 10);
-  ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("/basalt/odom_nwu", 10);
-  ros::Publisher odom_ned_pub = nh.advertise<nav_msgs::Odometry>("/basalt/odom_ned", 10);
+  ros::Publisher pose_cov_pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("basalt/pose_nwu", 10);
+  ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("basalt/pose_cov_nwu", 10);
+  ros::Publisher pose_map_pub = nh.advertise<geometry_msgs::PoseStamped>("basalt/pose_enu", 10);
+  ros::Publisher pose_cov_map_pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("basalt/pose_cov_enu", 10);
+  ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("basalt/odom_nwu", 10);
+  ros::Publisher odom_ned_pub = nh.advertise<nav_msgs::Odometry>("basalt/odom_ned", 10);
+
+  tf2_ros::TransformBroadcaster m_broadcaster;
 
   std::thread t4([&]() {
     basalt::PoseVelBiasState<double>::Ptr data;
@@ -248,7 +292,11 @@ int main(int argc, char** argv) {
         while (true) {
         out_state_queue.pop(data);
 
-        if (!data.get()) break;
+        if (!data.get()) {
+            std::cout << "out_state_queue data depletes, break"
+                      << std::endl;
+            break;
+        }
 
         int64_t t_ns = data->t_ns;
 
@@ -259,60 +307,47 @@ int main(int argc, char** argv) {
 
         vio_t_ns.emplace_back(data->t_ns);
 
-        if (last_t_ns > 0){
-
-          // hm: abort if speed greater than 15 m/s, probably a failure
-          if (vel_w_i.norm() > 15 )
-          {
-            std::cout << "detect speed too fast > 15 m/s : " << vel_w_i.norm() << std::endl;
-            abort();
-          }
-
-          // hm: detect big change in estimated position accross frames, > 4m accross frame
-          if ( (vio_t_w_i.back() - T_w_i.translation()).norm() > 3){
-            std::cout << "detect translation change > than 3:  " << (vio_t_w_i.back() - T_w_i.translation()).norm() << std::endl;
-            // abort(); 
-          }
-        }else{
-          first_t_ns = t_ns;
+        if (last_t_ns > 0) {
+        } else {
+            first_t_ns = t_ns;
         }
         last_t_ns = t_ns;
-        
-        vio_t_w_i.emplace_back(T_w_i.translation());
 
-        // the w_i here is referring to vision world (for now, it is the same as IMU frame, which is FLU / NWU )
-        // we want to follow ROS convention on the map coordinate, which is NEU
+        vio_t_w_i.emplace_back(T_w_i.translation());
+        // vio_T_w_i.emplace_back(T_w_i);
+
+        // the w_i here is referring to vision world (for now, it is the
+        // same as IMU frame, which is FLU / NWU ) we want to follow ROS
+        // convention on the map coordinate, which is NEU
 
         Sophus::Matrix3d R_m_w, R_ned_nwu;
 
         // change of coordinates from NWU to ENU
-        R_m_w <<  0,-1,0,
-                  1,0,0,
-                  0,0,1; 
+        Sophus::SE3d T_m_w;
+        R_m_w << 0, -1, 0, 1, 0, 0, 0, 0, 1;
+        T_m_w.setRotationMatrix(R_m_w);
+        T_m_w.translation().setZero();
 
         // change of coordinates from NWU to NED
-        R_ned_nwu <<  1,0,0,
-                    0,-1,0,
-                    0,0,-1;
+        Sophus::SE3d T_ned_nwu;
+        R_ned_nwu << 1, 0, 0, 0, -1, 0, 0, 0, -1;
+        T_ned_nwu.setRotationMatrix(R_ned_nwu);
+        T_ned_nwu.translation().setZero();
 
+        // for ROS: body frame (NWU) in NWU
+        Sophus::SE3d T_w_b;
+        T_w_b = T_w_i * T_i_b;
 
-        // reference: https://dev.px4.io/master/en/ros/external_position_estimation.html#ros_reference_frames
-        // T_w_i: i is in NWU, and w(basalt local frame) is in NWU
-        // T_m_i: i is in NUW, and m(ROS map) is in ENU
+        // for ROS: body frame (ENU) in ENU
+        Sophus::SE3d T_m_b;
+        T_m_b = T_m_w * T_w_b * T_m_w.inverse();
 
-        // for ROS
-        Sophus::SE3d T_m_i;
-        T_m_i.translation() = R_m_w * T_w_i.translation();
-        T_m_i.setRotationMatrix(R_m_w * T_w_i.rotationMatrix() * R_m_w.inverse());
-
-        // for MAVLink Odom message
+        // for MAVLink Odom message (NED)
         Sophus::SE3d T_ned_frd;
-        T_ned_frd.translation() = R_ned_nwu * T_w_i.translation();
-        T_ned_frd.setRotationMatrix(R_ned_nwu * T_w_i.rotationMatrix() * R_ned_nwu.inverse());
+        T_ned_frd = T_ned_nwu * T_w_b * T_ned_nwu.inverse();
 
         // vel_w_i is in NWU
-        Eigen::Vector3d vel_body_ned =  R_ned_nwu * T_w_i.rotationMatrix().inverse() * vel_w_i;
-
+        Eigen::Vector3d vel_body_ned = R_ned_nwu * vel_w_i;
 
         geometry_msgs::Pose pose, pose_enu, pose_ned;
         geometry_msgs::Twist twist, twist_ned;
@@ -320,96 +355,114 @@ int main(int argc, char** argv) {
 
         // basalt frame
         {
-          pose.position.x =  T_w_i.translation()[0];
-          pose.position.y =  T_w_i.translation()[1];
-          pose.position.z =  T_w_i.translation()[2];
-          pose.orientation.w = T_w_i.unit_quaternion().w();
-          pose.orientation.x = T_w_i.unit_quaternion().x();
-          pose.orientation.y = T_w_i.unit_quaternion().y();
-          pose.orientation.z = T_w_i.unit_quaternion().z();
+            pose.position.x = T_w_b.translation()[0];
+            pose.position.y = T_w_b.translation()[1];
+            pose.position.z = T_w_b.translation()[2];
+            pose.orientation.w = T_w_b.unit_quaternion().w();
+            pose.orientation.x = T_w_b.unit_quaternion().x();
+            pose.orientation.y = T_w_b.unit_quaternion().y();
+            pose.orientation.z = T_w_b.unit_quaternion().z();
 
-          twist.linear.x = vel_w_i[0];
-          twist.linear.y = vel_w_i[1];
-          twist.linear.z = vel_w_i[2];
+            twist.linear.x = vel_w_i[0];
+            twist.linear.y = vel_w_i[1];
+            twist.linear.z = vel_w_i[2];
         }
 
         // ROS ENU frame
         {
-          pose_enu.position.x =  T_m_i.translation()[0];
-          pose_enu.position.y =  T_m_i.translation()[1];
-          pose_enu.position.z =  T_m_i.translation()[2];
-          pose_enu.orientation.w = T_m_i.unit_quaternion().w();
-          pose_enu.orientation.x = T_m_i.unit_quaternion().x();
-          pose_enu.orientation.y = T_m_i.unit_quaternion().y();
-          pose_enu.orientation.z = T_m_i.unit_quaternion().z();
+            pose_enu.position.x = T_m_b.translation()[0];
+            pose_enu.position.y = T_m_b.translation()[1];
+            pose_enu.position.z = T_m_b.translation()[2];
+            pose_enu.orientation.w = T_m_b.unit_quaternion().w();
+            pose_enu.orientation.x = T_m_b.unit_quaternion().x();
+            pose_enu.orientation.y = T_m_b.unit_quaternion().y();
+            pose_enu.orientation.z = T_m_b.unit_quaternion().z();
         }
 
         // PX4 NED frame
         {
-          pose_ned.position.x = T_ned_frd.translation()[0];
-          pose_ned.position.y = T_ned_frd.translation()[1];
-          pose_ned.position.z = T_ned_frd.translation()[2];
-          pose_ned.orientation.w = T_ned_frd.unit_quaternion().w();
-          pose_ned.orientation.x = T_ned_frd.unit_quaternion().x();
-          pose_ned.orientation.y = T_ned_frd.unit_quaternion().y();
-          pose_ned.orientation.z = T_ned_frd.unit_quaternion().z();
+            pose_ned.position.x = T_ned_frd.translation()[0];
+            pose_ned.position.y = T_ned_frd.translation()[1];
+            pose_ned.position.z = T_ned_frd.translation()[2];
+            pose_ned.orientation.w = T_ned_frd.unit_quaternion().w();
+            pose_ned.orientation.x = T_ned_frd.unit_quaternion().x();
+            pose_ned.orientation.y = T_ned_frd.unit_quaternion().y();
+            pose_ned.orientation.z = T_ned_frd.unit_quaternion().z();
 
-          twist_ned.linear.x = vel_body_ned[0];
-          twist_ned.linear.y = vel_body_ned[1];
-          twist_ned.linear.z = vel_body_ned[2];
+            twist_ned.linear.x = vel_body_ned[0];
+            twist_ned.linear.y = vel_body_ned[1];
+            twist_ned.linear.z = vel_body_ned[2];
         }
 
         // pose in local world frame
         {
-          geometry_msgs::PoseStamped poseMsg;
-          poseMsg.header.stamp.fromNSec(t_ns);
-          poseMsg.header.frame_id = "odom";
-          poseMsg.pose = pose;
-          pose_pub.publish(poseMsg);
+            geometry_msgs::PoseStamped poseMsg;
+            poseMsg.header.stamp.fromNSec(t_ns);
+            poseMsg.header.frame_id = tf_prefix + "odom_nwu";
+            poseMsg.pose = pose;
+            pose_pub.publish(poseMsg);
+
+            // send TF data
+            if (publish_tf) {
+                geometry_msgs::TransformStamped tf;
+                tf.header = poseMsg.header;
+                tf.child_frame_id = tf_prefix + "base_link_nwu";
+                tf.transform.translation.x = pose.position.x;
+                tf.transform.translation.y = pose.position.y;
+                tf.transform.translation.z = pose.position.z;
+                tf.transform.rotation = pose.orientation;
+
+                m_broadcaster.sendTransform(tf);
+            }
         }
 
-        // pose with covariance in local world frame
+        // pose & odometry with covariance in lodom NWU frame
+        // /basalt/pose_nwu and /basalt/odom_nwu
         {
-          geometry_msgs::PoseWithCovarianceStamped poseMsg;
-          poseMsg.header.stamp.fromNSec(t_ns);
-          poseMsg.header.frame_id = "odom";
-          poseMsg.pose.pose =  pose;
+            geometry_msgs::PoseWithCovarianceStamped poseMsg;
+            poseMsg.header.stamp.fromNSec(t_ns);
+            poseMsg.header.frame_id = tf_prefix + "odom_nwu";
+            poseMsg.pose.pose = pose;
 
-          odom.header = poseMsg.header;
-          odom.child_frame_id = "base_link";
-          odom.pose.pose = pose;
-          odom.twist.twist = twist;
+            odom.header = poseMsg.header;
+            odom.child_frame_id = tf_prefix + "base_link_nwu";
+            odom.pose.pose = pose;
+            odom.twist.twist = twist;
 
-          pose_cov_pub.publish(poseMsg);
-          odom_pub.publish(odom);
+            pose_cov_pub.publish(poseMsg);
+            odom_pub.publish(odom);
         }
 
         // pose in ROS enu world frame
-        {
-          geometry_msgs::PoseStamped poseMsg;
-          poseMsg.header.stamp.fromNSec(t_ns);
-          poseMsg.header.frame_id = "map";
-          poseMsg.pose = pose_enu;
-          pose_map_pub.publish(poseMsg);
-        }
+        // /basalt/pose_enu
+        // {
+        //   geometry_msgs::PoseStamped poseMsg;
+        //   poseMsg.header.stamp.fromNSec(t_ns);
+        //   poseMsg.header.frame_id = "map";
+        //   poseMsg.pose = pose_enu;
+        //   pose_map_pub->publish(poseMsg);
+        // }
 
-        // pose with covariance in ROS enu world frame
-        {
-          geometry_msgs::PoseWithCovarianceStamped poseMsg;
-          poseMsg.header.stamp.fromNSec(t_ns);
-          poseMsg.header.frame_id = "map";
-          poseMsg.pose.pose = pose_enu;
-          pose_cov_map_pub.publish(poseMsg);
-          
-        }
+        // // pose with covariance in ROS enu world frame
+        // // /basalt/pose_cov_enu
+        // {
+        //   geometry_msgs::PoseWithCovarianceStamped poseMsg;
+        //   poseMsg.header.stamp.fromNSec(t_ns);
+        //   poseMsg.header.frame_id = "map";
+        //   poseMsg.pose.pose = pose_enu;
+        //   pose_cov_map_pub->publish(poseMsg);
 
+        // }
+
+        // odometry in ned frame, body frame also frd
+        // /basalt/odom_ned
         {
-          odom_ned.header.stamp.fromNSec(t_ns);
-          odom_ned.header.frame_id = "odom_ned";
-          odom_ned.child_frame_id = "base_link_frd";
-          odom_ned.pose.pose = pose_ned;
-          odom_ned.twist.twist = twist_ned;
-          odom_ned_pub.publish(odom_ned);
+            odom_ned.header.stamp.fromNSec(t_ns);
+            odom_ned.header.frame_id = tf_prefix + "odom_ned";
+            odom_ned.child_frame_id = tf_prefix + "base_link_frd";
+            odom_ned.pose.pose = pose_ned;
+            odom_ned.twist.twist = twist_ned;
+            odom_ned_pub.publish(odom_ned);
         }
           
         

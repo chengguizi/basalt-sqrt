@@ -186,6 +186,11 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
         break;
       }
 
+      if (curr_frame->pre_last_keypoint_id == 0){
+        std::cout << "optical flow not stabilised yet, continue waiting..." << std::endl;
+        continue;
+      }
+
       // Correct camera time offset
       // curr_frame->t_ns += calib.cam_time_offset_ns;
 
@@ -349,6 +354,10 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
 
     for (const auto& kv_obs : opt_flow_meas->observations[i]) {
       int kpt_id = kv_obs.first;
+
+      // hm: skip all observations that are new in the last frame (probably unstable)
+      if ( kv_obs.first >= opt_flow_meas->pre_last_keypoint_id)
+        continue;
 
       if (lmdb.landmarkExists(kpt_id)) {
         const TimeCamId& tcid_host = lmdb.getLandmark(kpt_id).host_kf_id;

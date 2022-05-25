@@ -283,6 +283,8 @@ find_package(catkin REQUIRED COMPONENTS
     image_transport
     message_filters
     cv_bridge
+    tf2
+    tf2_ros
 )
 # include_directories(${catkin_INCLUDE_DIRS})
 catkin_package()
