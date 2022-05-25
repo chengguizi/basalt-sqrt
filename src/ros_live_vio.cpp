@@ -37,6 +37,7 @@
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <basalt/io/stereo_processor.h>
+#include <basalt/io/4cam_processor.h>
 
 #include <tf2_ros/transform_broadcaster.h>
 
@@ -196,7 +197,7 @@ int main(int argc, char** argv) {
   T_i_b.setQuaternion(T_i_b_q);
   T_i_b.translation() = T_i_b_t;
 
-  std::cout << "The transformation matrix of T_i_b is\n" << T_i_b.matrix();
+  std::cout << "The transformation matrix of T_i_b is\n" << T_i_b.matrix() << std::endl;
 
 
 
@@ -216,18 +217,48 @@ int main(int argc, char** argv) {
     vio_config.optical_flow_skip_frames = 2;
   }
 
-  StereoProcessor::Parameters stereoParam;
-  stereoParam.queue_size = 3;
-  stereoParam.left_topic = "/zed/left/image_raw_color";
-  stereoParam.right_topic = "/zed/right/image_raw_color";
-  stereoParam.left_info_topic = "/zed/left/camera_info_raw";
-  stereoParam.right_info_topic = "/zed/right/camera_info_raw";
-  StereoProcessor stereo_sub(vio_config, stereoParam);
-  last_img_data = stereo_sub.last_img_data;
+  std::string imu_topic, cam0_topic, cam1_topic, cam2_topic, cam3_topic;
+  std::string cam0_info_topic, cam1_info_topic;
+
+  local_nh.param<std::string>("imu_topic", imu_topic, "");
+  local_nh.param<std::string>("cam0_topic", cam0_topic, "");
+  local_nh.param<std::string>("cam1_topic", cam1_topic, "");
+  local_nh.param<std::string>("cam0_info_topic", cam0_info_topic, "");
+  local_nh.param<std::string>("cam1_info_topic", cam1_info_topic, "");
+
+  local_nh.param<std::string>("cam2_topic", cam2_topic, "");
+  local_nh.param<std::string>("cam3_topic", cam3_topic, "");
+
+  std::shared_ptr<StereoProcessor> stereoProcessor;
+  std::shared_ptr<FourCamProcessor> fourCamProcessor;
+
+  if (cam2_topic.empty()){
+    std::cout << "VIO is in Stereo Mode" << std::endl;
+    StereoProcessor::Parameters stereoParam;
+    stereoParam.queue_size = 3;
+    stereoParam.left_topic = cam0_topic;
+    stereoParam.right_topic = cam1_topic;
+    stereoParam.left_info_topic = cam0_info_topic;
+    stereoParam.right_info_topic = cam1_info_topic;
+    stereoProcessor = std::make_shared<StereoProcessor>(vio_config, stereoParam);
+    last_img_data = stereoProcessor->last_img_data;
+  }else{
+    std::cout << "VIO is in 4Cam Mode" << std::endl;
+    FourCamProcessor::Parameters fourCamParam;
+    fourCamParam.queue_size = 3;
+    fourCamParam.cam0_topic = cam0_topic;
+    fourCamParam.cam1_topic = cam1_topic;
+    fourCamParam.cam2_topic = cam2_topic;
+    fourCamParam.cam3_topic = cam3_topic;
+    
+    fourCamProcessor = std::make_shared<FourCamProcessor>(vio_config, fourCamParam);
+  }
+
+  
 
   ros::Subscriber Imusub;
   if (use_imu)
-    Imusub = nh.subscribe("/mavros/imu/data/sys_id_9", 200, imuCallback); // 2 seconds of buffering
+    Imusub = nh.subscribe(imu_topic, 200, imuCallback); // 2 seconds of buffering
 
   if (num_threads > 0) {
     tbb::task_scheduler_init init(num_threads);
@@ -246,7 +277,12 @@ int main(int argc, char** argv) {
 
 
   opt_flow_ptr = basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
-  stereo_sub.image_data_queue = &opt_flow_ptr->input_queue;
+
+  if (cam2_topic.empty()){
+    stereoProcessor->image_data_queue = &opt_flow_ptr->input_queue;
+  }else{
+    fourCamProcessor->image_data_queue = &opt_flow_ptr->input_queue;
+  }
 
   std::cout << "use_double = " << use_double << std::endl;
   
@@ -617,7 +653,12 @@ int main(int argc, char** argv) {
   terminate = true;
   std::cout<<"terminate!!!"<<std::endl;
 
-  if (stereo_sub.image_data_queue) stereo_sub.image_data_queue->push(nullptr);
+  if (cam2_topic.empty()){
+    if (stereoProcessor->image_data_queue) stereoProcessor->image_data_queue->push(nullptr);
+  }else {
+    if (fourCamProcessor->image_data_queue) fourCamProcessor->image_data_queue->push(nullptr);
+  }
+  
   if (imu_data_queue) imu_data_queue->push(nullptr);
 
   // if (t3.get()) t3->join();
@@ -750,7 +791,7 @@ void load_data(const std::string& calib_path) {
   if (os.is_open()) {
     cereal::JSONInputArchive archive(os);
     archive(calib);
-    std::cout << "Loaded camera with " << calib.intrinsics.size() << " cameras"
+    std::cout << "Loaded camera calibration with " << calib.intrinsics.size() << " cameras"
               << std::endl;
 
   } else {
