@@ -55,6 +55,7 @@ VioConfig::VioConfig() {
   optical_flow_epipolar_error = 0.005;
   optical_flow_skip_frames = 1;
   feature_match_show = false;
+  force_init_no_yaw = true;
 
   vio_linearization_type = LinearizationType::ABS_QR;
   vio_sqrt_marg = true;
@@ -169,6 +170,7 @@ void serialize(Archive& ar, basalt::VioConfig& config) {
   ar(CEREAL_NVP(config.optical_flow_levels));
   ar(CEREAL_NVP(config.optical_flow_skip_frames));
   ar(CEREAL_NVP(config.feature_match_show));
+  ar(CEREAL_NVP(config.force_init_no_yaw));
 
   ar(CEREAL_NVP(config.vio_linearization_type));
   ar(CEREAL_NVP(config.vio_sqrt_marg));

@@ -209,6 +209,26 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
         T_w_i_init.setQuaternion(Eigen::Quaternion<Scalar>::FromTwoVectors(
             data->accel, Vec3::UnitZ()));
 
+        const auto eulerAngles = T_w_i_init.rotationMatrix().eulerAngles(2,1,0);
+
+        std::cout << "eulerAngles (degree) for T_w_i_init is " << eulerAngles.transpose() * 180.0 / M_PI << std::endl;
+
+        if (config.force_init_no_yaw)
+        {
+          std::cout << "Forcing yaw to be zero for T_w_i_init" << std::endl;
+          // hm: force no yaw
+
+          std::cout << "T_w_i original \n" << T_w_i_init.matrix() << std::endl;
+
+          // https://stackoverflow.com/questions/54125208/eigen-eulerangles-returns-incorrect-values
+          Eigen::AngleAxis<Scalar> Y(0, Eigen::Matrix<Scalar,3,1>::UnitZ());
+          Eigen::AngleAxis<Scalar> P(eulerAngles(1), Eigen::Matrix<Scalar,3,1>::UnitY());
+          Eigen::AngleAxis<Scalar> R(eulerAngles(2), Eigen::Matrix<Scalar,3,1>::UnitX());
+
+          T_w_i_init.setQuaternion(Eigen::Quaternion<Scalar>(Y*P*R));
+        }
+        
+
         last_state_t_ns = curr_frame->t_ns;
         imu_meas[last_state_t_ns] =
             IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg_init, ba_init);

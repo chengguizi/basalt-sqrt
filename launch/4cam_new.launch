@@ -21,8 +21,8 @@
     <param name= "use_imu" value="true"/>
     <param name= "use_double" value="false"/>
 
-    <param name= "T_i_b/quaternion/w" value="1"/>
-    <param name= "T_i_b/quaternion/x" value="0"/>
+    <param name= "T_i_b/quaternion/w" value="0"/>
+    <param name= "T_i_b/quaternion/x" value="1"/>
     <param name= "T_i_b/quaternion/y" value="0"/>
     <param name= "T_i_b/quaternion/z" value="0"/>
     <param name= "T_i_b/translation/x" value="0"/>
