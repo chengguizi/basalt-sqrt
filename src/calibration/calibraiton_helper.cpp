@@ -112,11 +112,13 @@ void CalibHelper::detectCorners(const VioDatasetPtr &vio_data,
   calib_corners.clear();
   calib_corners_rejected.clear();
 
+  std::cout << "Detecting corners with low ID = " << april_grid.getLowId() << std::endl;
+
   tbb::parallel_for(
       tbb::blocked_range<size_t>(0, vio_data->get_image_timestamps().size()),
       [&](const tbb::blocked_range<size_t> &r) {
         const int numTags = april_grid.getTagCols() * april_grid.getTagRows();
-        ApriltagDetector ad(numTags);
+        ApriltagDetector ad(numTags, april_grid.getLowId());
 
         for (size_t j = r.begin(); j != r.end(); ++j) {
           int64_t timestamp_ns = vio_data->get_image_timestamps()[j];

@@ -660,6 +660,14 @@ void CamCalib::initCamExtrinsics() {
   size_t last_camera = 0;
   calib_opt->calib->T_i_c[0] = Sophus::SE3d();  // Identity
 
+  // Eigen::Matrix3d ned_T_rdf;
+
+  // ned_T_rdf <<  0,0,1,
+  //               1,0,0,
+  //               0,1,0;
+
+  // calib_opt->calib->T_i_c[0] = Sophus::SE3d::trans(Eigen::Vector3d(0.03, 0.025, 0)) * Sophus::SE3d::rotZ(M_PI/6.0) * Sophus::SE3d(ned_T_rdf, Eigen::Vector3d(0,0,0));  // NED rotation in Z , 30 degree
+
   auto next_max_weight_edge = [&](size_t cam_id) {
     int max_weight = -1;
     std::pair<int, int64_t> res(-1, -1);

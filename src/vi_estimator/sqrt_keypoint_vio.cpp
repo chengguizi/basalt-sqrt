@@ -147,10 +147,62 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(
   initialize(bg, ba);
 }
 
+template <class Scalar>
+static Eigen::Matrix<Scalar,3,1> euler_rpy(Eigen::Matrix<Scalar,3,3> R)
+{
+    Eigen::Matrix<Scalar,3,1> euler_out;
+    // Each vector is a row of the matrix
+    Eigen::Matrix<Scalar,3,1> m_el[3];
+    m_el[0] = Eigen::Matrix<Scalar,3,1>(R(0,0), R(0,1), R(0,2));
+    m_el[1] = Eigen::Matrix<Scalar,3,1>(R(1,0), R(1,1), R(1,2));
+    m_el[2] = Eigen::Matrix<Scalar,3,1>(R(2,0), R(2,1), R(2,2));
+
+    // Check that pitch is not at a singularity
+    if (std::abs(m_el[2].x()) >= 1)
+    {
+        euler_out.z() = 0;
+
+        // From difference of angles formula
+        Scalar delta = std::atan2(m_el[2].y(),m_el[2].z());
+        if (m_el[2].x() < 0)  //gimbal locked down
+        {
+            euler_out.y() = M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+        else // gimbal locked up
+        {
+            euler_out.y() = -M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+    }
+    else
+    {
+        euler_out.y() = - std::asin(m_el[2].x());
+
+        euler_out.x() = std::atan2(m_el[2].y()/std::cos(euler_out.y()), 
+            m_el[2].z()/std::cos(euler_out.y()));
+
+        euler_out.z() = std::atan2(m_el[1].x()/std::cos(euler_out.y()), 
+            m_el[0].x()/std::cos(euler_out.y()));
+    }
+
+    return euler_out;
+}
+
 template <class Scalar_>
 void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
                                                    const Eigen::Vector3d& ba_) {
-  auto proc_func = [&, bg = bg_.cast<Scalar>(), ba = ba_.cast<Scalar>()] {
+  
+  bg_init = bg_.cast<Scalar>();
+  ba_init = ba_.cast<Scalar>();
+  std::cout << "initialise with injected gyro bias: " << bg_init.transpose() << ", \n accel bias: " <<
+      ba_init.transpose() << std::endl;
+
+  std::cout << "calibration's accel bias = " << calib.calib_accel_bias.getParam().transpose() << std::endl;
+  std::cout << "calibration's gyro bias = " << calib.calib_gyro_bias.getParam().transpose() << std::endl;
+
+  // hm: problematic capture by reference in lambda for passed in temperary objects
+  auto proc_func = [&] {
     OpticalFlowResult::Ptr prev_frame, curr_frame;
     typename IntegratedImuMeasurement<Scalar>::Ptr meas;
 
@@ -176,6 +228,11 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
         break;
       }
 
+      if (curr_frame->pre_last_keypoint_id == 0){
+        std::cout << "optical flow not stabilised yet, continue waiting..." << std::endl;
+        continue;
+      }
+
       // Correct camera time offset
       // curr_frame->t_ns += calib.cam_time_offset_ns;
 
@@ -193,12 +250,33 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
 
         T_w_i_init.setQuaternion(Eigen::Quaternion<Scalar>::FromTwoVectors(
             data->accel, Vec3::UnitZ()));
+        
+        // const auto eulerAngles = T_w_i_init.rotationMatrix().eulerAngles(2,1,0);
+        Eigen::Matrix<Scalar,3,1> eulerAngles = euler_rpy<Scalar>(T_w_i_init.rotationMatrix());
+
+        std::cout << "eulerAngles RPY (degree) for T_w_i_init is " << eulerAngles.transpose() * 180.0 / M_PI << std::endl;
+
+        if (config.force_init_no_yaw)
+        {
+          std::cout << "Forcing yaw to be zero for T_w_i_init" << std::endl;
+          // hm: force no yaw
+
+          std::cout << "T_w_i original \n" << T_w_i_init.matrix() << std::endl;
+
+          // https://stackoverflow.com/questions/54125208/eigen-eulerangles-returns-incorrect-values
+          Eigen::AngleAxis<Scalar> Y(0, Eigen::Matrix<Scalar,3,1>::UnitZ());
+          Eigen::AngleAxis<Scalar> P(eulerAngles(1), Eigen::Matrix<Scalar,3,1>::UnitY());
+          Eigen::AngleAxis<Scalar> R(eulerAngles(0), Eigen::Matrix<Scalar,3,1>::UnitX());
+
+          T_w_i_init.setQuaternion(Eigen::Quaternion<Scalar>(Y*P*R));
+        }
+        
 
         last_state_t_ns = curr_frame->t_ns;
         imu_meas[last_state_t_ns] =
-            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg, ba);
+            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg_init, ba_init);
         frame_states[last_state_t_ns] = PoseVelBiasStateWithLin<Scalar>(
-            last_state_t_ns, T_w_i_init, vel_w_i_init, bg, ba, true);
+            last_state_t_ns, T_w_i_init, vel_w_i_init, bg_init, ba_init, true);
 
         marg_data.order.abs_order_map[last_state_t_ns] =
             std::make_pair(0, POSE_VEL_BIAS_SIZE);
@@ -339,6 +417,10 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
 
     for (const auto& kv_obs : opt_flow_meas->observations[i]) {
       int kpt_id = kv_obs.first;
+
+      // hm: skip all observations that are new in the last frame (probably unstable)
+      if ( kv_obs.first >= opt_flow_meas->pre_last_keypoint_id)
+        continue;
 
       if (lmdb.landmarkExists(kpt_id)) {
         const TimeCamId& tcid_host = lmdb.getLandmark(kpt_id).host_kf_id;

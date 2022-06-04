@@ -9,7 +9,7 @@ struct ApriltagDetectorData;
 
 class ApriltagDetector {
  public:
-  ApriltagDetector(int numTags);
+  ApriltagDetector(int numTags, int startId = 0);
 
   ~ApriltagDetector();
 
@@ -22,6 +22,7 @@ class ApriltagDetector {
 
  private:
   ApriltagDetectorData* data;
+  int _startId;
 };
 
 }  // namespace basalt

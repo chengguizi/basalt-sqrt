@@ -46,12 +46,14 @@ struct AprilGrid {
 
   inline int getTagCols() const { return tagCols; }
   inline int getTagRows() const { return tagRows; }
+  inline int getLowId() const { return lowId; }
 
  private:
   int tagCols;        // number of apriltags
   int tagRows;        // number of apriltags
   double tagSize;     // size of apriltag, edge to edge [m]
   double tagSpacing;  // ratio of space between tags to tagSize
+  double lowId = 25;
 };
 
 }  // namespace basalt
