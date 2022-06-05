@@ -548,7 +548,17 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
                                             p1_3d.template head<3>(), T_0_1);
 
           if (p0_triangulated.array().isFinite().all() &&
-              p0_triangulated[3] > 0 && p0_triangulated[3] < 3.0) {
+              p0_triangulated[3] > 1e-5 && p0_triangulated[3] < 3.0) {
+
+            
+            // hm: if it is behind the camera throw away
+            if (p0_triangulated[2] < 0.0)
+            {
+              if (config.vio_debug)
+                std::cout << "point " << p0_triangulated.transpose() <<" is behind the camera, throw away" << std::endl;
+              continue;
+            }
+            
             Keypoint<Scalar> kpt_pos;
             kpt_pos.host_kf_id = tcidl;
             kpt_pos.direction =
