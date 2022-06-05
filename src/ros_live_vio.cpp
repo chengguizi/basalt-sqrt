@@ -628,7 +628,7 @@ int main(int argc, char** argv) {
             curr_vis_data->opt_flow_res->input_images.get()) {
           auto& img_data = curr_vis_data->opt_flow_res->input_images->img_data;
 
-          for (size_t cam_id = 0; cam_id < 2;
+          for (size_t cam_id = 0; cam_id < img_view.size();
                cam_id++) {
             if (img_data[cam_id].img.get())
               img_view[cam_id]->SetImage(
@@ -682,7 +682,7 @@ void draw_image_overlay(pangolin::View& v, size_t cam_id) {
       const auto& optical_flow_obs = curr_vis_data->opt_flow_res->observations[cam_id];
 
       double min_id = 1, max_id = 1;
-
+      
       if (!points.empty()) {
         min_id = points[0][2];
         max_id = points[0][2];

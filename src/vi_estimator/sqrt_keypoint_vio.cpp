@@ -446,9 +446,9 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
           }
           num_points_connected[tcid_host.frame_id]++;
 
-          if (i == 0) connected0++;
+          if (i == k) connected0++;
         } else {
-          if (i == 0) {
+          if (i == k) {
             unconnected_obs0.emplace(kpt_id);
           }
         }
@@ -558,7 +558,7 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
                 std::cout << "point " << p0_triangulated.transpose() <<" is behind the camera, throw away" << std::endl;
               continue;
             }
-            
+
             Keypoint<Scalar> kpt_pos;
             kpt_pos.host_kf_id = tcidl;
             kpt_pos.direction =
