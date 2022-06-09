@@ -158,9 +158,9 @@ class SplineOptimization {
     }
   }
 
-  void saveCalib(const std::string& path) const {
+  void saveCalib(const std::string& path, const std::string& filename = "calibration.json") const {
     if (calib) {
-      std::ofstream os(path + "calibration.json");
+      std::ofstream os(path + filename);
       cereal::JSONOutputArchive archive(os);
 
       archive(*calib);

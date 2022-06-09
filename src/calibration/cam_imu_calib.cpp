@@ -791,9 +791,9 @@ bool CamImuCalib::optimizeWithParam(bool print_info,
 
 void CamImuCalib::saveCalib() {
   if (calib_opt) {
-    calib_opt->saveCalib(cache_path);
+    calib_opt->saveCalib(cache_path, "calibration-imu.json");
 
-    std::cout << "Saved calibration in " << cache_path << "calibration.json"
+    std::cout << "Saved calibration in " << cache_path << "calibration-imu.json"
               << std::endl;
   }
 }
