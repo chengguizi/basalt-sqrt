@@ -120,7 +120,7 @@ SqrtKeypointVioEstimator<Scalar_>::SqrtKeypointVioEstimator(
 
   opt_started = false;
 
-  vision_data_queue.set_capacity(10);
+  vision_data_queue.set_capacity(50);
   imu_data_queue.set_capacity(300);
 }
 

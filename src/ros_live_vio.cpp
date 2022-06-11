@@ -105,10 +105,10 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
     return;
   }
   // std::cout<<"pre_imu_seq: "<<pre_imu_seq<<", cur_imu_seq: "<<imu_msg->header.seq<<std::endl;
-  if(imu_msg->header.seq != pre_imu_seq + 1){
-    std::cout << "IMU packet loss, sequence number not continuous, now" << imu_msg->header.seq << " and previous " << pre_imu_seq << std::endl;
-    throw std::runtime_error("abort because of bad IMU stream");
-  }
+  // if(imu_msg->header.seq != pre_imu_seq + 1){
+  //   std::cout << "IMU packet loss, sequence number not continuous, now" << imu_msg->header.seq << " and previous " << pre_imu_seq << std::endl;
+  //   throw std::runtime_error("abort because of bad IMU stream");
+  // }
   pre_imu_seq = imu_msg->header.seq;
 
   basalt::ImuData<double>::Ptr data(new basalt::ImuData<double>);
@@ -133,9 +133,9 @@ void imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg){
   data->gyro[2] = imu_msg->angular_velocity.z;
 
 
-  if (data->accel.norm() > 50){
+  if (data->accel.norm() > 10 * 9.81){
     std::cout << imu_msg->linear_acceleration.x << " " << imu_msg->linear_acceleration.y << " " << imu_msg->linear_acceleration.z << std::endl;
-    std::cout << "Detect greater than 5G acceleration in raw data, corrupted?" << std::endl;
+    std::cout << "Detect greater than 10G acceleration in raw data, corrupted?" << std::endl;
     // throw std::runtime_error("Detect greater than 5G acceleration in raw data, corrupted?");
     return; // hm: ignore this data point
   }
