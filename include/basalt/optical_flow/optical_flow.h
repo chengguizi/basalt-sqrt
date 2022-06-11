@@ -82,6 +82,9 @@ class OpticalFlowBase {
   tbb::concurrent_bounded_queue<OpticalFlowInput::Ptr> input_queue;
   tbb::concurrent_bounded_queue<OpticalFlowResult::Ptr>* output_queue = nullptr;
 
+  // hm: additional queue to force filtering out unwanted tracked points
+  tbb::concurrent_bounded_queue<KeypointId> input_filter_ids;
+
   Eigen::MatrixXf patch_coord;
 };
 

@@ -84,6 +84,9 @@ class VioEstimatorBase {
   tbb::concurrent_bounded_queue<MargData::Ptr>* out_marg_queue = nullptr;
   tbb::concurrent_bounded_queue<VioVisualizationData::Ptr>* out_vis_queue =
       nullptr;
+  // hm: add a output feedback queue to optical flow
+  tbb::concurrent_bounded_queue<KeypointId>* out_filter_ids =
+      nullptr;
 
   virtual void initialize(int64_t t_ns, const Sophus::SE3d& T_w_i,
                           const Eigen::Vector3d& vel_w_i,

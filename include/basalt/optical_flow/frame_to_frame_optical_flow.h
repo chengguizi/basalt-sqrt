@@ -207,6 +207,11 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
           }
 
           for(const auto& kv: transforms->observations[k]){
+            
+            // hm: skip keypoints that are too new
+            if (kv.first > pre_last_keypoint_id)
+              continue;
+            
             auto it = transforms->observations[k+1].find(kv.first);
             if(it != transforms->observations[k+1].end()){
               
@@ -439,6 +444,22 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   }
 
   void filterPoints() {
+
+    // hm: filter points based on input queue
+    {
+      KeypointId id_to_remove;
+      while(input_filter_ids.try_pop(id_to_remove))
+      {
+        std::cout << "removing kp " << id_to_remove << "in optical flow" << std::endl;
+        for (size_t k=0; k < calib.intrinsics.size(); k++) {
+          if (transforms->observations.at(k).count(id_to_remove))
+            transforms->observations.at(k).erase(id_to_remove);
+        }
+      }
+    }
+
+    // filter points for stereo setup
+
     if (calib.intrinsics.size() < 2) return;
 
     for (size_t k=0; k < calib.intrinsics.size(); k+=2)

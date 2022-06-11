@@ -295,6 +295,7 @@ int main(int argc, char** argv) {
   opt_flow_ptr->output_queue = &vio->vision_data_queue;
   if (show_gui) vio->out_vis_queue = &out_vis_queue;
   vio->out_state_queue = &out_state_queue;
+  vio->out_filter_ids = &opt_flow_ptr->input_filter_ids;
 
   vio_data_log.Clear();
 
@@ -748,7 +749,7 @@ void draw_image_overlay(pangolin::View& v, size_t cam_id) {
 
       glColor3f(1.0, 0.8, 0.0);
       pangolin::GlFont::I()
-          .Text("Tracked %d points, mixd = %.2lf maxd = %.2lf", points.size(), 1/max_id, 1/min_id)
+          .Text("Tracked %d points, mind = %.2lf maxd = %.2lf", points.size(), 1/max_id, 1/min_id)
           .Draw(5, 40);
     }
   }

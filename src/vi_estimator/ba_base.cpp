@@ -362,9 +362,13 @@ void BundleAdjustmentBase<Scalar_>::computeProjections(
     std::vector<Eigen::aligned_vector<Eigen::Matrix<Scalar2, 4, 1>>>& data,
     FrameId last_state_t_ns) const {
   for (const auto& kv : lmdb.getObservations()) {
+
+    // hm: get each observation's keypoint host time-camera-id
     const TimeCamId& tcid_h = kv.first;
 
     for (const auto& obs_kv : kv.second) {
+
+      // hm: observation's own time-camera-id
       const TimeCamId& tcid_t = obs_kv.first;
 
       if (tcid_t.frame_id != last_state_t_ns) continue;
@@ -392,9 +396,15 @@ void BundleAdjustmentBase<Scalar_>::computeProjections(
               Vec4 proj;
 
               using CamT = std::decay_t<decltype(cam)>;
-              linearizePoint<Scalar, CamT>(Vec2::Zero(), kpt_pos, T_t_h, cam,
+
+              // hm: only add valid projections to data
+              bool valid = linearizePoint<Scalar, CamT>(Vec2::Zero(), kpt_pos, T_t_h, cam,
                                            res, nullptr, nullptr, &proj);
 
+              if (!valid)
+                continue;
+
+              // hm: hard code last number as the keypoint id
               proj[3] = kpt_id;
               data[tcid_t.cam_id].emplace_back(proj.template cast<Scalar2>());
             }
