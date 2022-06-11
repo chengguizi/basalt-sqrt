@@ -85,10 +85,16 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     patch_coord = PatchT::pattern2.template cast<float>();
 
     if (calib.intrinsics.size() > 1) {
-      Eigen::Matrix4d Ed;
-      Sophus::SE3d T_i_j = calib.T_i_c[0].inverse() * calib.T_i_c[1];
-      computeEssential(T_i_j, Ed);
-      E = Ed.cast<Scalar>();
+      
+      for (size_t k = 0; k < calib.intrinsics.size(); k+=2)
+      {
+        std::cout << "Optical flow initialise camera " << k << " and " << k+1;
+        Eigen::Matrix4d Ed;
+        Sophus::SE3d T_i_j = calib.T_i_c[k].inverse() * calib.T_i_c[k+1];
+        computeEssential(T_i_j, Ed);
+        E.push_back(Ed.cast<Scalar>());
+      }
+      
     }
 
     processing_thread.reset(
@@ -178,43 +184,50 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       //draw matching points
       if(config.feature_match_show){
-        std::vector<cv::KeyPoint> kp1, kp2, kp0;
-        std::vector<cv::DMatch> match;
-        int match_id = 0;
-        basalt::Image<const uint16_t> img_raw_1(pyramid->at(0).lvl(1)), img_raw_2(pyramid->at(1).lvl(1));
-        int w = img_raw_1.w; 
-        int h = img_raw_1.h;
-        cv::Mat img1(h, w, CV_8U);
-        cv::Mat img2(h, w, CV_8U);
-        for(int y = 0; y < h; y++){
-          uchar* sub_ptr_1 = img1.ptr(y);
-          uchar* sub_ptr_2 = img2.ptr(y);
 
-          for(int x = 0; x < w; x++){
-            sub_ptr_1[x] = (img_raw_1(x,y) >> 8);
-            sub_ptr_2[x] = (img_raw_2(x,y) >> 8);
+        for (size_t k=0; k < calib.intrinsics.size(); k+=2)
+        {
+          std::vector<cv::KeyPoint> kp1, kp2, kp0;
+          std::vector<cv::DMatch> match;
+          int match_id = 0;
+          basalt::Image<const uint16_t> img_raw_1(pyramid->at(k).lvl(1)), img_raw_2(pyramid->at(k+1).lvl(1));
+          int w = img_raw_1.w; 
+          int h = img_raw_1.h;
+          cv::Mat img1(h, w, CV_8U);
+          cv::Mat img2(h, w, CV_8U);
+          for(int y = 0; y < h; y++){
+            uchar* sub_ptr_1 = img1.ptr(y);
+            uchar* sub_ptr_2 = img2.ptr(y);
 
+            for(int x = 0; x < w; x++){
+              sub_ptr_1[x] = (img_raw_1(x,y) >> 8);
+              sub_ptr_2[x] = (img_raw_2(x,y) >> 8);
+
+            }
           }
+
+          for(const auto& kv: transforms->observations[k]){
+            auto it = transforms->observations[k+1].find(kv.first);
+            if(it != transforms->observations[k+1].end()){
+              
+              kp1.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
+              kp2.push_back(cv::KeyPoint(cv::Point2f(it->second.translation()[0]/2, it->second.translation()[1]/2), 1));
+              match.push_back(cv::DMatch(match_id,match_id,1));
+              match_id++;
+            }
+            else{
+              kp0.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
+            }
+          }
+          cv::Mat image_show(h, w*2, CV_8U);
+          cv::drawKeypoints(img1, kp0,img1);
+          cv::drawMatches(img1,kp1,img2,kp2,match, image_show);
+          std::string title = "matching result" + std::to_string(k/2);
+
+          cv::imshow(title, image_show);
+          cv::waitKey(1);
         }
-
-        for(const auto& kv: transforms->observations[0]){
-          auto it = transforms->observations[1].find(kv.first);
-          if(it != transforms->observations[1].end()){
-            
-            kp1.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
-            kp2.push_back(cv::KeyPoint(cv::Point2f(it->second.translation()[0]/2, it->second.translation()[1]/2), 1));
-            match.push_back(cv::DMatch(match_id,match_id,1));
-            match_id++;
-          }
-          else{
-            kp0.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 1));
-          }
-        }
-        cv::Mat image_show(h, w*2, CV_8U);
-        cv::drawKeypoints(img1, kp0,img1);
-        cv::drawMatches(img1,kp1,img2,kp2,match, image_show);
-        cv::imshow("matching result", image_show);
-        cv::waitKey(1);
+        
       }
     }
 
@@ -387,78 +400,88 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     pre_last_keypoint_id = last_keypoint_id;
     Eigen::aligned_vector<Eigen::Vector2d> pts0;
 
-    for (const auto& kv : transforms->observations.at(0)) {
-      pts0.emplace_back(kv.second.translation().cast<double>());
-    }
+    for (size_t k=0; k < calib.intrinsics.size(); k+=2)
+    {
+      Eigen::aligned_vector<Eigen::Vector2d> pts0;
 
-    KeypointsData kd;
+      for (const auto& kv : transforms->observations.at(k)) {
+        pts0.emplace_back(kv.second.translation().cast<double>());
+      }
 
-    detectKeypoints(pyramid->at(0).lvl(0), kd,
-                    config.optical_flow_detection_grid_size, 1, pts0);
+      KeypointsData kd;
 
-    Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
-        new_poses1;
+      detectKeypoints(pyramid->at(k).lvl(0), kd,
+                      config.optical_flow_detection_grid_size, 1, pts0);
 
-    for (size_t i = 0; i < kd.corners.size(); i++) {
-      Eigen::AffineCompact2f transform;
-      transform.setIdentity();
-      transform.translation() = kd.corners[i].cast<Scalar>();
+      Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
+          new_poses1;
 
-      transforms->observations.at(0)[last_keypoint_id] = transform;
-      new_poses0[last_keypoint_id] = transform;
+      for (size_t i = 0; i < kd.corners.size(); i++) {
+        Eigen::AffineCompact2f transform;
+        transform.setIdentity();
+        transform.translation() = kd.corners[i].cast<Scalar>();
 
-      last_keypoint_id++;
-    }
+        transforms->observations.at(k)[last_keypoint_id] = transform;
+        new_poses0[last_keypoint_id] = transform;
 
-    if (calib.intrinsics.size() > 1) {
-      trackPoints(pyramid->at(0), pyramid->at(1), new_poses0, new_poses1, 0, 1);
+        last_keypoint_id++;
+      }
 
-      for (const auto& kv : new_poses1) {
-        transforms->observations.at(1).emplace(kv);
+      if (k + 1 <= calib.intrinsics.size()) {
+        trackPoints(pyramid->at(k), pyramid->at(k+1), new_poses0, new_poses1, k, k+1);
+
+        for (const auto& kv : new_poses1) {
+          transforms->observations.at(k+1).emplace(kv);
+        }
       }
     }
+    
   }
 
   void filterPoints() {
     if (calib.intrinsics.size() < 2) return;
 
-    std::set<KeypointId> lm_to_remove;
+    for (size_t k=0; k < calib.intrinsics.size(); k+=2)
+    {
+      std::set<KeypointId> lm_to_remove;
 
-    std::vector<KeypointId> kpid;
-    Eigen::aligned_vector<Eigen::Vector2f> proj0, proj1;
+      std::vector<KeypointId> kpid;
+      Eigen::aligned_vector<Eigen::Vector2f> proj0, proj1;
 
-    for (const auto& kv : transforms->observations.at(1)) {
-      auto it = transforms->observations.at(0).find(kv.first);
+      for (const auto& kv : transforms->observations.at(k+1)) {
+        auto it = transforms->observations.at(k).find(kv.first);
 
-      if (it != transforms->observations.at(0).end()) {
-        proj0.emplace_back(it->second.translation());
-        proj1.emplace_back(kv.second.translation());
-        kpid.emplace_back(kv.first);
+        if (it != transforms->observations.at(k).end()) {
+          proj0.emplace_back(it->second.translation());
+          proj1.emplace_back(kv.second.translation());
+          kpid.emplace_back(kv.first);
+        }
       }
-    }
 
-    Eigen::aligned_vector<Eigen::Vector4f> p3d0, p3d1;
-    std::vector<bool> p3d0_success, p3d1_success;
+      Eigen::aligned_vector<Eigen::Vector4f> p3d0, p3d1;
+      std::vector<bool> p3d0_success, p3d1_success;
 
-    calib.intrinsics[0].unproject(proj0, p3d0, p3d0_success);
-    calib.intrinsics[1].unproject(proj1, p3d1, p3d1_success);
+      calib.intrinsics[k].unproject(proj0, p3d0, p3d0_success);
+      calib.intrinsics[k+1].unproject(proj1, p3d1, p3d1_success);
 
-    for (size_t i = 0; i < p3d0_success.size(); i++) {
-      if (p3d0_success[i] && p3d1_success[i]) {
-        const double epipolar_error =
-            std::abs(p3d0[i].transpose() * E * p3d1[i]);
+      for (size_t i = 0; i < p3d0_success.size(); i++) {
+        if (p3d0_success[i] && p3d1_success[i]) {
+          const double epipolar_error =
+              std::abs(p3d0[i].transpose() * E.at(k/2) * p3d1[i]);
 
-        if (epipolar_error > config.optical_flow_epipolar_error) {
+          if (epipolar_error > config.optical_flow_epipolar_error) {
+            lm_to_remove.emplace(kpid[i]);
+          }
+        } else {
           lm_to_remove.emplace(kpid[i]);
         }
-      } else {
-        lm_to_remove.emplace(kpid[i]);
+      }
+
+      for (int id : lm_to_remove) {
+        transforms->observations.at(k+1).erase(id);
       }
     }
-
-    for (int id : lm_to_remove) {
-      transforms->observations.at(1).erase(id);
-    }
+    
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -478,7 +501,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   std::shared_ptr<std::vector<basalt::ManagedImagePyr<uint16_t>>> old_pyramid,
       pyramid;
 
-  Matrix4 E;
+  Eigen::aligned_vector<Matrix4> E;
 
   std::shared_ptr<std::thread> processing_thread;
 };

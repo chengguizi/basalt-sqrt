@@ -1,0 +1,36 @@
+<launch>
+<arg name="calib_file" default="carla_sim/sim4.json"/>
+<arg name="show_gui" default="true"/>
+
+<node pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
+    <param name="imu_topic" type="string" value="/carla/ego_vehicle/imu"/>
+    <param name="cam0_topic" type="string" value="/carla/ego_vehicle/fisheye_fl/image"/>
+    <param name="cam1_topic" type="string" value="/carla/ego_vehicle/fisheye_fr/image"/>
+    <param name="cam0_info_topic" type="string" value="/carla/ego_vehicle/fisheye_fl/camera_info"/>
+    <param name="cam1_info_topic" type="string" value="/carla/ego_vehicle/fisheye_fr/camera_info"/>
+
+    <param name="cam2_topic" type="string" value="/carla/ego_vehicle/fisheye_br/image"/>
+    <param name="cam3_topic" type="string" value="/carla/ego_vehicle/fisheye_bl/image"/>
+
+    <param name="tf_prefix" type = "string" value=""/>
+    <param name="calib_file" type = "string" value="$(find basalt-sqrt)/data/$(arg calib_file)"/> 
+    <param name="config_path" type = "string" value="$(find basalt-sqrt)/data/sim_config.json"/> 
+    <param name= "publish_tf" value="false"/>
+    <param name= "show_gui" value="$(arg show_gui)"/>
+    <param name= "print_queue" value="false"/>
+    <param name= "terminate" value="false"/>
+    <param name= "use_imu" value="true"/>
+    <param name= "use_double" value="false"/>
+
+    <param name= "T_i_b/quaternion/w" value="0"/>
+    <param name= "T_i_b/quaternion/x" value="1"/>
+    <param name= "T_i_b/quaternion/y" value="0"/>
+    <param name= "T_i_b/quaternion/z" value="0"/>
+    <param name= "T_i_b/translation/x" value="0"/>
+    <param name= "T_i_b/translation/y" value="0"/>
+    <param name= "T_i_b/translation/z" value="0"/>
+</node>
+
+</launch>
+
+

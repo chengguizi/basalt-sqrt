@@ -1,0 +1,38 @@
+<launch>
+<arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
+<arg name="vehicle" default="$(arg _uav_id)"/>
+<arg name="calib_file" default="4cam/4cam-basalt-ds-all.json"/>
+<arg name="show_gui" default="false"/>
+
+<node ns="$(arg vehicle)" pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
+    <param name="imu_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/imu"/>
+    <param name="cam0_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/left/image_rect_raw"/>
+    <param name="cam1_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/rgb/image_rect_raw"/>
+    <param name="cam0_info_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/left/camera_info"/>
+    <param name="cam1_info_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/rgb/camera_info"/>
+
+    <param name="cam2_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/camd/image_rect_raw"/>
+    <param name="cam3_topic" type="string" value="/$(arg vehicle)/oak_ros/oak1/right/image_rect_raw"/>
+
+    <param name="tf_prefix" type = "string" value="$(arg vehicle)/"/>
+    <param name="calib_file" type = "string" value="$(find basalt-sqrt)/data/$(arg calib_file)"/> 
+    <param name="config_path" type = "string" value="$(find basalt-sqrt)/data/4cam_config.json"/> 
+    <param name= "publish_tf" value="false"/>
+    <param name= "show_gui" value="$(arg show_gui)"/>
+    <param name= "print_queue" value="false"/>
+    <param name= "terminate" value="false"/>
+    <param name= "use_imu" value="true"/>
+    <param name= "use_double" value="false"/>
+
+    <param name= "T_i_b/quaternion/w" value="0"/>
+    <param name= "T_i_b/quaternion/x" value="1"/>
+    <param name= "T_i_b/quaternion/y" value="0"/>
+    <param name= "T_i_b/quaternion/z" value="0"/>
+    <param name= "T_i_b/translation/x" value="0"/>
+    <param name= "T_i_b/translation/y" value="0"/>
+    <param name= "T_i_b/translation/z" value="0"/>
+</node>
+
+</launch>
+
+
