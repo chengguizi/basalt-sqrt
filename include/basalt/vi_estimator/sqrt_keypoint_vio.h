@@ -259,5 +259,11 @@ class SqrtKeypointVioEstimator : public VioEstimatorBase,
   // timing and stats
   ExecutionStats stats_all_;
   ExecutionStats stats_sums_;
+
+  size_t landmark_thres;
+  bool we_probably_moved;
+  double triangulation_factor;
+  long long take_kf_count;
+  bool initialise_baseline;
 };
 }  // namespace basalt
