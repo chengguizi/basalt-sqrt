@@ -62,6 +62,7 @@ struct VioConfig {
   int vio_max_states;
   int vio_max_kfs;
   int vio_min_frames_after_kf;
+  std::string vio_keyframe_select_type;
   float vio_new_kf_keypoints_thresh;
   bool vio_debug;
   bool vio_extended_logging;

@@ -489,6 +489,19 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
   /////////////////////
 
 
+  if (config.vio_keyframe_select_type == "basic") {
+
+    if (Scalar(connected_total) / (connected_total + unconnected_obs_total.size()) <
+            Scalar(config.vio_new_kf_keypoints_thresh) &&
+        frames_after_kf > config.vio_min_frames_after_kf)
+      take_kf = true;
+
+    if (config.vio_debug) {
+      std::cout << "connected_total " << connected_total << " unconnected_obs_total "
+                << unconnected_obs_total.size() << std::endl;
+    }
+
+  }else if (config.vio_keyframe_select_type == "custom") {
     bool moved_sufficiently = false;
   
     if (!meas.get() || !kf_ids.size())
@@ -518,122 +531,127 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
         moved_sufficiently = true;
     }
 
-  if (frames_after_kf > config.vio_min_frames_after_kf) {
-
-    // Case 1 - Low number of landmarks in database
-    if  ( moved_sufficiently && lmdb.numLandmarks() < landmark_thres ){
-      
-      std::cout  << "Creating KF because of low no. of landmarks: " << lmdb.numLandmarks() << std::endl;
+    if (frames_after_kf >= 15) {
+      std::cout  << "Creating KF at least every 15 frames" << std::endl;
       take_kf = true;
-      if (landmark_thres > 4)
-        landmark_thres /= 2;
-    }else if(lmdb.numLandmarks() > 16 && landmark_thres < 16){
-      landmark_thres *= 2;
-    }
+    }else if (frames_after_kf > config.vio_min_frames_after_kf) {
 
-    // Case 2 - only a small ratio of landmarks are observed, time to marginalise old key frames!
-    if ( moved_sufficiently && (connected_stereo_total < 3) && double(connected_total) / (lmdb.numLandmarks() + 1) < 0.3){
-      std::cout  << "Creating KF because of current frame's observed landmarks are low: " << connected_total << std::endl;
-      take_kf = true;
-
-      if (!we_probably_moved){
-        we_probably_moved = true;
-        std::cout  << "WE PROBABLY HAD MOVED" << std::endl;
+      // Case 1 - Low number of landmarks in database
+      if  ( moved_sufficiently && lmdb.numLandmarks() < landmark_thres ){
+        
+        std::cout  << "Creating KF because of low no. of landmarks: " << lmdb.numLandmarks() << std::endl;
+        take_kf = true;
+        if (landmark_thres > 4)
+          landmark_thres /= 2;
+      }else if(lmdb.numLandmarks() > 16 && landmark_thres < 16){
+        landmark_thres *= 2;
       }
-    }
 
-    // Case 2b - we have free stereo observations that we haven't used
-    if ( (moved_sufficiently || connected_stereo_total < 3) && unconnected_stereo_total.size() > 2) {
-      std::cout  << "Creating KF because of unconnected stereo observations " << unconnected_stereo_total.size() << std::endl;
-      take_kf = true;
-    }
+      // Case 2 - only a small ratio of landmarks are observed, time to marginalise old key frames!
+      if ( moved_sufficiently && (connected_stereo_total < 3) && double(connected_total) / (lmdb.numLandmarks() + 1) < 0.3){
+        std::cout  << "Creating KF because of current frame's observed landmarks are low: " << connected_total << std::endl;
+        take_kf = true;
 
-    // std::cout << "connected_stereo_total " << connected_stereo_total << ", unconnected_stereo_total " << unconnected_stereo_total.size() << std::endl;
-
-    // Case 3 - if too few of the points are close
-    if ( moved_sufficiently && connected_good < 3) {
-      std::cout  << "Creating KF because of too few observed landmarks that are closed (20 meters): " << connected_good << std::endl;
-      take_kf = true;
-    }
-
-    // Case 4 - there are lots of unconnected ones, we should incorporate
-    if (we_probably_moved && moved_sufficiently && double(connected_total)/ (connected_total + unconnected_obs_total.size()) <
-        config.vio_new_kf_keypoints_thresh){
-      take_kf = true;
-      std::cout << "Creating KF because connected is too small a portion of unconnected = " << double(connected_total)/ (connected_total + unconnected_obs_total.size()) << std::endl;
-    }
-
-
-  }
-
-  // if (frames_after_kf > 50 && !take_kf) {
-  //   take_kf = true;
-  //   std::cout << "Creating KF periodically every 50 frames" << std::endl;
-  // }
-
-  if (!initialise_baseline){
-    // latest state translation to the first pose position
-
-    try {
-      double moved_dist = (frame_states.at(last_state_t_ns).getState().T_w_i.translation()).norm();
-      
-      if ( moved_dist > config.vio_min_triangulation_dist * triangulation_factor && frames_after_kf > config.vio_min_frames_after_kf){
-        std::cout  << "Creating KF because of baseline initialisation, factor " << triangulation_factor << std::endl;
-        take_kf = true; // take a keyframe when the time is right after start;
-        triangulation_factor *= 1.41;
-        if (take_kf_count > 16)
-          initialise_baseline = true;
+        if (!we_probably_moved){
+          we_probably_moved = true;
+          std::cout  << "WE PROBABLY HAD MOVED" << std::endl;
+        }
       }
-    }catch (const std::out_of_range& e) {
-        throw std::runtime_error("Out of Range error at initialise_baseline");
-    }catch(const std::exception& e){
-      std::cout << e.what() << std::endl;
-      throw std::runtime_error("other exception at initialise_baseline");
-    }
-    
 
-  }else{
-
-    assert(kf_ids.size() > 0);
-
-    basalt::FrameId last_kf = *kf_ids.crbegin();
-
-    Eigen::Vector3<Scalar> trans;
-    if (frame_states.count(last_kf))
-      trans = frame_states.at(last_kf).getState().T_w_i.translation();
-    else
-      trans = frame_poses.at(last_kf).getPose().translation();
-
-    // hm: check if we have move sufficiently far    
-    try {
-      const double max_dist_bt_keyframes = 1.0;
-      double moved_dist = (frame_states.at(last_state_t_ns).getState().T_w_i.translation() - trans).norm();
-      if (moved_dist > max_dist_bt_keyframes){
-        std::cout << "Creating KF because of moved distance in meters " << moved_dist << std::endl;
+      // Case 2b - we have free stereo observations that we haven't used
+      if ( (moved_sufficiently || connected_stereo_total < 3) && unconnected_stereo_total.size() > 2) {
+        std::cout  << "Creating KF because of unconnected stereo observations " << unconnected_stereo_total.size() << std::endl;
         take_kf = true;
       }
-        
-    }catch (const std::out_of_range& e){
-      std::cout << e.what() << std::endl;
-      throw std::runtime_error("Out of Range error at max_dist_bt_keyframes checking");
-    }catch(const std::exception& e){
-      std::cout << e.what() << std::endl;
-      throw std::runtime_error("other exception at max_dist_bt_keyframes checking");
+
+      // std::cout << "connected_stereo_total " << connected_stereo_total << ", unconnected_stereo_total " << unconnected_stereo_total.size() << std::endl;
+
+      // Case 3 - if too few of the points are close
+      if (connected_good < 3) {
+        std::cout  << "Creating KF because of too few observed landmarks that are closed (20 meters): " << connected_good << std::endl;
+        take_kf = true;
+      }
+
+      // Case 4 - there are lots of unconnected ones, we should incorporate
+      if (we_probably_moved && moved_sufficiently && double(connected_total)/ (connected_total + unconnected_obs_total.size()) <
+          config.vio_new_kf_keypoints_thresh){
+        take_kf = true;
+        std::cout << "Creating KF because connected is too small a portion of unconnected = " << double(connected_total)/ (connected_total + unconnected_obs_total.size()) << std::endl;
+      }
+
+
     }
+
+    if (!initialise_baseline){
+      // latest state translation to the first pose position
+
+      try {
+        double moved_dist = (frame_states.at(last_state_t_ns).getState().T_w_i.translation()).norm();
+        
+        if ( moved_dist > config.vio_min_triangulation_dist * triangulation_factor && frames_after_kf > config.vio_min_frames_after_kf){
+          std::cout  << "Creating KF because of baseline initialisation, factor " << triangulation_factor << std::endl;
+          take_kf = true; // take a keyframe when the time is right after start;
+          triangulation_factor *= 1.41;
+          if (take_kf_count > 8)
+            initialise_baseline = true;
+        }
+      }catch (const std::out_of_range& e) {
+          throw std::runtime_error("Out of Range error at initialise_baseline");
+      }catch(const std::exception& e){
+        std::cout << e.what() << std::endl;
+        throw std::runtime_error("other exception at initialise_baseline");
+      }
+
+      // hm: at start, take keyframe more aggressively
+      // if (Scalar(connected_total) / (connected_total + unconnected_obs_total.size()) <
+      //       Scalar(0.7) &&
+      //   frames_after_kf > config.vio_min_frames_after_kf)
+      //   take_kf = true;
+
+    }else{
+
+      assert(kf_ids.size() > 0);
+
+      basalt::FrameId last_kf = *kf_ids.crbegin();
+
+      Eigen::Vector3<Scalar> trans;
+      if (frame_states.count(last_kf))
+        trans = frame_states.at(last_kf).getState().T_w_i.translation();
+      else
+        trans = frame_poses.at(last_kf).getPose().translation();
+
+      // hm: check if we have move sufficiently far    
+      try {
+        const double max_dist_bt_keyframes = 1.0;
+        double moved_dist = (frame_states.at(last_state_t_ns).getState().T_w_i.translation() - trans).norm();
+        if (moved_dist > max_dist_bt_keyframes){
+          std::cout << "Creating KF because of moved distance in meters " << moved_dist << std::endl;
+          take_kf = true;
+        }
+          
+      }catch (const std::out_of_range& e){
+        std::cout << e.what() << std::endl;
+        throw std::runtime_error("Out of Range error at max_dist_bt_keyframes checking");
+      }catch(const std::exception& e){
+        std::cout << e.what() << std::endl;
+        throw std::runtime_error("other exception at max_dist_bt_keyframes checking");
+      }
+    }
+
+    if (config.vio_debug) {
+      std::cout << "connected_total " << connected_total << " lmdb.numLandmarks() "
+                << lmdb.numLandmarks() << std::endl;
+    }
+  } else {
+    throw std::runtime_error("undefined vio_keyframe_select_type");
   }
 
-  // if (Scalar(connected_total) / (connected_total + unconnected_obs_total.size()) <
-  //         Scalar(config.vio_new_kf_keypoints_thresh) &&
-  //     frames_after_kf > config.vio_min_frames_after_kf)
-  //   take_kf = true;
 
-  if (config.vio_debug) {
-    std::cout << "connected_total " << connected_total << " lmdb.numLandmarks() "
-              << lmdb.numLandmarks() << std::endl;
-  }
+    
 
   if (take_kf) {
-    std::cout << "Taking keyframe after no. frames " << frames_after_kf << std::endl;
+    take_kf_count++;
+    std::cout << "Taking keyframe " << take_kf_count << " after no. frames " << frames_after_kf << std::endl;
     // Triangulate new points from one of the observations (with sufficient
     // baseline) and make keyframe for camera 0
     take_kf = false;

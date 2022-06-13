@@ -64,6 +64,7 @@ VioConfig::VioConfig() {
   vio_max_kfs = 7;
   vio_min_frames_after_kf = 5;
   vio_new_kf_keypoints_thresh = 0.7;
+  vio_keyframe_select_type = "basic";
 
   vio_debug = false;
   vio_extended_logging = false;
@@ -178,6 +179,7 @@ void serialize(Archive& ar, basalt::VioConfig& config) {
   ar(CEREAL_NVP(config.vio_max_kfs));
   ar(CEREAL_NVP(config.vio_min_frames_after_kf));
   ar(CEREAL_NVP(config.vio_new_kf_keypoints_thresh));
+  ar(CEREAL_NVP(config.vio_keyframe_select_type));
   ar(CEREAL_NVP(config.vio_debug));
   ar(CEREAL_NVP(config.vio_extended_logging));
   ar(CEREAL_NVP(config.vio_max_iterations));
