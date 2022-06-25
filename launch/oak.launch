@@ -2,7 +2,7 @@
 <arg name="_uav_id" value="$(env UAV_GROUPNAME)" />
 <arg name="vehicle" default="$(arg _uav_id)"/>
 <!-- <arg name="calib_file" default="oak/pinhole-$(arg vehicle).json"/> -->
-<arg name="calib_file" default="oak/oakd-cd700.json"/>
+<arg name="calib_file" default="oak/oakd-cd700-400p.json"/>
 <arg name="show_gui" default="true"/>
 
 <node ns="$(arg vehicle)" pkg="basalt-sqrt" type="basalt_ros_live" name="basalt_ros_live" output="screen" respawn="false">
