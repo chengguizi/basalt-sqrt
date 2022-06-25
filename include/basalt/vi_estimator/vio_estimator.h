@@ -139,4 +139,48 @@ double alignSVD(const std::vector<int64_t>& filter_t_ns,
                 const Eigen::aligned_vector<Eigen::Vector3d>& filter_t_w_i,
                 const std::vector<int64_t>& gt_t_ns,
                 Eigen::aligned_vector<Eigen::Vector3d>& gt_t_w_i);
+
+
+template <class Scalar>
+Eigen::Matrix<Scalar,3,1> euler_rpy(Eigen::Matrix<Scalar,3,3> R)
+{
+    Eigen::Matrix<Scalar,3,1> euler_out;
+    // Each vector is a row of the matrix
+    Eigen::Matrix<Scalar,3,1> m_el[3];
+    m_el[0] = Eigen::Matrix<Scalar,3,1>(R(0,0), R(0,1), R(0,2));
+    m_el[1] = Eigen::Matrix<Scalar,3,1>(R(1,0), R(1,1), R(1,2));
+    m_el[2] = Eigen::Matrix<Scalar,3,1>(R(2,0), R(2,1), R(2,2));
+
+    // Check that pitch is not at a singularity
+    if (std::abs(m_el[2].x()) >= 1)
+    {
+        euler_out.z() = 0;
+
+        // From difference of angles formula
+        Scalar delta = std::atan2(m_el[2].y(),m_el[2].z());
+        if (m_el[2].x() < 0)  //gimbal locked down
+        {
+            euler_out.y() = M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+        else // gimbal locked up
+        {
+            euler_out.y() = -M_PI / 2.0;
+            euler_out.x() = delta;
+        }
+    }
+    else
+    {
+        euler_out.y() = - std::asin(m_el[2].x());
+
+        euler_out.x() = std::atan2(m_el[2].y()/std::cos(euler_out.y()), 
+            m_el[2].z()/std::cos(euler_out.y()));
+
+        euler_out.z() = std::atan2(m_el[1].x()/std::cos(euler_out.y()), 
+            m_el[0].x()/std::cos(euler_out.y()));
+    }
+
+    return euler_out;
+}
+
 }  // namespace basalt

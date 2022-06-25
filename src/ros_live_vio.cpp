@@ -376,6 +376,20 @@ int main(int argc, char** argv) {
         Sophus::SE3d T_w_b;
         T_w_b = T_w_i * T_i_b;
 
+        // add a virtual gravity aligned NWU frame
+
+        Sophus::SE3d T_w_b_gravity_aligned = T_w_b;
+
+        {
+          Eigen::Matrix<double,3,1> eulerAngles = basalt::euler_rpy<double>(T_w_b.rotationMatrix());
+
+          Eigen::AngleAxis<double> Y(eulerAngles(2), Eigen::Matrix<double,3,1>::UnitZ());
+          // Eigen::AngleAxis<Scalar> P(0, Eigen::Matrix<Scalar,3,1>::UnitY());
+          // Eigen::AngleAxis<Scalar> R(0, Eigen::Matrix<Scalar,3,1>::UnitX());
+
+          T_w_b_gravity_aligned.setQuaternion(Eigen::Quaternion<double>(Y));
+        }
+
         // for ROS: body frame (ENU) in ENU
         Sophus::SE3d T_m_b;
         T_m_b = T_m_w * T_w_b * T_m_w.inverse();
@@ -387,7 +401,7 @@ int main(int argc, char** argv) {
         // vel_w_i is in NWU
         Eigen::Vector3d vel_body_ned = R_ned_nwu * vel_w_i;
 
-        geometry_msgs::Pose pose, pose_enu, pose_ned;
+        geometry_msgs::Pose pose, pose_gravity_aligned, pose_enu, pose_ned;
         geometry_msgs::Twist twist, twist_ned;
         nav_msgs::Odometry odom, odom_ned;
 
@@ -404,6 +418,16 @@ int main(int argc, char** argv) {
             twist.linear.x = vel_w_i[0];
             twist.linear.y = vel_w_i[1];
             twist.linear.z = vel_w_i[2];
+        }
+
+        {
+          pose_gravity_aligned.position.x = T_w_b_gravity_aligned.translation()[0];
+          pose_gravity_aligned.position.y = T_w_b_gravity_aligned.translation()[1];
+          pose_gravity_aligned.position.z = T_w_b_gravity_aligned.translation()[2];
+          pose_gravity_aligned.orientation.w = T_w_b_gravity_aligned.unit_quaternion().w();
+          pose_gravity_aligned.orientation.x = T_w_b_gravity_aligned.unit_quaternion().x();
+          pose_gravity_aligned.orientation.y = T_w_b_gravity_aligned.unit_quaternion().y();
+          pose_gravity_aligned.orientation.z = T_w_b_gravity_aligned.unit_quaternion().z();
         }
 
         // ROS ENU frame
@@ -451,6 +475,17 @@ int main(int argc, char** argv) {
                 tf.transform.rotation = pose.orientation;
 
                 m_broadcaster.sendTransform(tf);
+
+                tf.header = poseMsg.header;
+                tf.child_frame_id = tf_prefix + "base_link_gravity_aligned";
+                tf.transform.translation.x = pose_gravity_aligned.position.x;
+                tf.transform.translation.y = pose_gravity_aligned.position.y;
+                tf.transform.translation.z = pose_gravity_aligned.position.z;
+                tf.transform.rotation = pose_gravity_aligned.orientation;
+
+                m_broadcaster.sendTransform(tf);
+
+
             }
         }
 
