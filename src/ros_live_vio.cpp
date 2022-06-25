@@ -289,6 +289,7 @@ int main(int argc, char** argv) {
   vio = basalt::VioEstimatorFactory::getVioEstimator(
       vio_config, calib, basalt::constants::g, use_imu, use_double);
 
+  vio->T_i_b = T_i_b;
   vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
   imu_data_queue = &vio->imu_data_queue;
 

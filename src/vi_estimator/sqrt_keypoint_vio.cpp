@@ -251,11 +251,26 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
           // std::cout << "Skipping IMU data.." << std::endl;
         }
 
+        std::cout << "T_i_b" << std::endl;
+        std::cout << T_i_b.matrix() << std::endl;
+
         Vec3 vel_w_i_init;
         vel_w_i_init.setZero();
 
         T_w_i_init.setQuaternion(Eigen::Quaternion<Scalar>::FromTwoVectors(
             data->accel, Vec3::UnitZ()));
+
+        // right to left convention
+        Scalar target_delta_yaw;
+        {
+          // const auto eulerAngles = (T_w_i_init * T_i_b.cast<Scalar>()).rotationMatrix().eulerAngles(2,1,0);
+          Eigen::Matrix<Scalar,3,1> eulerAngles = euler_rpy<Scalar>((T_w_i_init * T_i_b.cast<Scalar>()).rotationMatrix());
+          std::cout << "eulerAngles RPY (degree) for T_w_i_init * T_i_b is " << eulerAngles.transpose() * 180.0 / M_PI << std::endl;
+
+          target_delta_yaw = eulerAngles(2);
+        }
+        
+        std::cout << "target_delta_yaw (deg) = " << target_delta_yaw * 180.0 / M_PI << std::endl;
         
         // const auto eulerAngles = T_w_i_init.rotationMatrix().eulerAngles(2,1,0);
         Eigen::Matrix<Scalar,3,1> eulerAngles = euler_rpy<Scalar>(T_w_i_init.rotationMatrix());
@@ -270,7 +285,7 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
           std::cout << "T_w_i original \n" << T_w_i_init.matrix() << std::endl;
 
           // https://stackoverflow.com/questions/54125208/eigen-eulerangles-returns-incorrect-values
-          Eigen::AngleAxis<Scalar> Y(0, Eigen::Matrix<Scalar,3,1>::UnitZ());
+          Eigen::AngleAxis<Scalar> Y(eulerAngles(2) - target_delta_yaw, Eigen::Matrix<Scalar,3,1>::UnitZ());
           Eigen::AngleAxis<Scalar> P(eulerAngles(1), Eigen::Matrix<Scalar,3,1>::UnitY());
           Eigen::AngleAxis<Scalar> R(eulerAngles(0), Eigen::Matrix<Scalar,3,1>::UnitX());
 
