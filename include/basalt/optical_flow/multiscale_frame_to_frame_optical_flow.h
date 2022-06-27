@@ -91,6 +91,8 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
     processing_thread.reset(new std::thread(
         &MultiscaleFrameToFrameOpticalFlow::processingLoop, this));
+
+    std::cout << "Initialised MultiscaleFrameToFrameOpticalFlow" << std::endl;
   }
 
   ~MultiscaleFrameToFrameOpticalFlow() { processing_thread->join(); }
@@ -141,6 +143,9 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
       addPoints();
       filterPoints();
+
+      BASALT_ASSERT(transforms->pre_last_keypoint_id == 0);
+
     } else {
       t_ns = curr_t_ns;
 
@@ -180,6 +185,10 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
       addPoints();
       filterPoints();
     }
+
+    // hm: addtional metadata regarding the ids that are newly added
+    transforms->last_keypoint_id = last_keypoint_id;
+    transforms->pre_last_keypoint_id = pre_last_keypoint_id;
 
     if (frame_counter % config.optical_flow_skip_frames == 0) {
       try {
@@ -358,6 +367,8 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
          level++) {
       Eigen::aligned_vector<Eigen::Vector2d> pts;
 
+      const Scalar scale = 1 << level;
+
       for (const auto& kv : transforms->observations.at(0)) {
         const ssize_t point_level =
             transforms->pyramid_levels.at(0).at(kv.first);
@@ -365,7 +376,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
         // do not create points were already points at similar levels are
         if (point_level <= level + 1 && point_level >= level - 1) {
           // if (point_level == level) {
-          const Scalar scale = 1 << point_level;
+          // const Scalar scale_point = 1 << point_level;
           pts.emplace_back(
               (kv.second.translation() / scale).template cast<double>());
         }
@@ -374,7 +385,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
       detectKeypoints(pyramid->at(0).lvl(level), kd,
                       config.optical_flow_detection_grid_size, 1, pts);
 
-      const Scalar scale = 1 << level;
+      // const Scalar scale = 1 << level;
 
       for (size_t i = 0; i < kd.corners.size(); i++) {
         Eigen::AffineCompact2f transform;

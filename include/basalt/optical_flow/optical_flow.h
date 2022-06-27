@@ -86,6 +86,10 @@ class OpticalFlowBase {
   tbb::concurrent_bounded_queue<KeypointId> input_filter_ids;
 
   Eigen::MatrixXf patch_coord;
+
+ protected:
+  // hm: this is to keep track of the last keypoint id from the previous timestamp
+  KeypointId pre_last_keypoint_id;
 };
 
 class OpticalFlowFactory {

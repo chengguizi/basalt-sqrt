@@ -99,6 +99,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
     processing_thread.reset(
         new std::thread(&FrameToFrameOpticalFlow::processingLoop, this));
+
+    std::cout << "Initialised FrameToFrameOpticalFlow" << std::endl;
   }
 
   ~FrameToFrameOpticalFlow() { processing_thread->join(); }
@@ -512,8 +514,6 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   size_t frame_counter;
 
   KeypointId last_keypoint_id;
-  // hm: this is to keep track of the last keypoint id from the previous timestamp
-  KeypointId pre_last_keypoint_id;
 
   VioConfig config;
   basalt::Calibration<Scalar> calib;
