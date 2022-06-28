@@ -684,6 +684,11 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
                               .translation()
                               .template cast<Scalar>();
 
+          // hm: skip correspondence that is on the same camera, and has too little disparity
+
+          if (tcido.cam_id == z && (p0 - p1).norm() < 2 )
+            continue;
+
           Vec4 p0_3d, p1_3d;
           bool valid1 = calib.intrinsics[0].unproject(p0, p0_3d);
           bool valid2 = calib.intrinsics[tcido.cam_id].unproject(p1, p1_3d);
