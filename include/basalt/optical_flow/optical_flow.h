@@ -66,6 +66,8 @@ struct OpticalFlowResult {
   // hm: record of ids that are newly added, and those are at least 2 image seq old
   KeypointId last_keypoint_id;
   KeypointId pre_last_keypoint_id;
+
+  size_t num_stereo_matches;
   
   std::vector<Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>>
       observations;

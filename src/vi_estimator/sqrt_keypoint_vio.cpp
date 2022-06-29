@@ -209,6 +209,12 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
           // std::cout << "Skipping IMU data.." << std::endl;
         }
 
+        std::cout << "gyro norm = " << data->gyro.norm() << " and accel norm = " << data->accel.norm() << std::endl;
+        if (curr_frame->num_stereo_matches < 2 && data->gyro.norm() < 0.2 && std::abs(data->accel.norm() - 9.81) < 1.2 ) {
+          std::cout << "too few stereo matches " << curr_frame->num_stereo_matches << ", lets wait or move the camera a bit..." << std::endl;
+          continue;
+        }
+
         std::cout << "T_i_b" << std::endl;
         std::cout << T_i_b.matrix() << std::endl;
 

@@ -494,6 +494,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
     // filter points for stereo setup
 
+    transforms->num_stereo_matches = 0;
+
     if (calib.intrinsics.size() < 2) return;
 
     for (size_t k=0; k < calib.intrinsics.size(); k+=2)
@@ -535,6 +537,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       for (int id : lm_to_remove) {
         transforms->observations.at(k+1).erase(id);
       }
+
+      transforms->num_stereo_matches += transforms->observations.at(k+1).size();
     }
     
   }
