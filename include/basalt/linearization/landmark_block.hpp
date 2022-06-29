@@ -18,6 +18,13 @@ struct RelPoseLin {
   Mat6 d_rel_d_h;
   Mat6 d_rel_d_t;
 
+  // hm: optionally we could do https://stackoverflow.com/a/58464018
+  RelPoseLin() {
+    T_t_h.setIdentity();
+    d_rel_d_h.setZero();
+    d_rel_d_t.setZero();
+  }
+
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
