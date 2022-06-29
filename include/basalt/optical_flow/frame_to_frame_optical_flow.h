@@ -318,7 +318,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
             if (dist2 < config.optical_flow_max_recovered_dist2) {
               // result[ids[r]] = transform_2;
               // hm: using initialisation list get rid of the maybe un-initialised warning within use of concurrent map
-              result.insert({ids[r], transform_2});
+              result.emplace(ids[r], transform_2);
             }
           }
         }
