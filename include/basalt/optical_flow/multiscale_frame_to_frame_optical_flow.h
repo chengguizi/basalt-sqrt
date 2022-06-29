@@ -255,7 +255,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
                                .squaredNorm();
 
             if (dist2 < config.optical_flow_max_recovered_dist2) {
-              result_transforms[id] = transform_2;
+              result_transforms.emplace(id, transform_2);
               result_pyramid_level[id] = pyramid_level[r];
             }
           }

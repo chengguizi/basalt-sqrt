@@ -274,7 +274,6 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
     auto compute_func = [&](const tbb::blocked_range<size_t>& range) {
       for (size_t r = range.begin(); r != range.end(); ++r) {
-        const KeypointId id = ids[r];
 
         const Eigen::AffineCompact2f& transform_1 = init_vec[r];
         Eigen::AffineCompact2f transform_2 = transform_1;
@@ -317,7 +316,9 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                                .squaredNorm();
 
             if (dist2 < config.optical_flow_max_recovered_dist2) {
-              result[id] = transform_2;
+              // result[ids[r]] = transform_2;
+              // hm: using initialisation list get rid of the maybe un-initialised warning within use of concurrent map
+              result.insert({ids[r], transform_2});
             }
           }
         }

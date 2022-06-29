@@ -132,11 +132,11 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(
   T_w_i_init = T_w_i.cast<Scalar>();
 
   last_state_t_ns = t_ns;
-  imu_meas[t_ns] = IntegratedImuMeasurement<Scalar>(t_ns, bg.cast<Scalar>(),
-                                                    ba.cast<Scalar>());
-  frame_states[t_ns] = PoseVelBiasStateWithLin<Scalar>(
+  imu_meas.emplace(t_ns, IntegratedImuMeasurement<Scalar>(t_ns, bg.cast<Scalar>(),
+                                                    ba.cast<Scalar>()));
+  frame_states.emplace(t_ns, PoseVelBiasStateWithLin<Scalar>(
       t_ns, T_w_i_init, vel_w_i.cast<Scalar>(), bg.cast<Scalar>(),
-      ba.cast<Scalar>(), true);
+      ba.cast<Scalar>(), true));
 
   marg_data.order.abs_order_map[t_ns] = std::make_pair(0, POSE_VEL_BIAS_SIZE);
   marg_data.order.total_size = POSE_VEL_BIAS_SIZE;
@@ -252,10 +252,10 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
         
 
         last_state_t_ns = curr_frame->t_ns;
-        imu_meas[last_state_t_ns] =
-            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg_init, ba_init);
-        frame_states[last_state_t_ns] = PoseVelBiasStateWithLin<Scalar>(
-            last_state_t_ns, T_w_i_init, vel_w_i_init, bg_init, ba_init, true);
+        imu_meas.emplace(last_state_t_ns, 
+            IntegratedImuMeasurement<Scalar>(last_state_t_ns, bg_init, ba_init));
+        frame_states.emplace(last_state_t_ns, PoseVelBiasStateWithLin<Scalar>(
+            last_state_t_ns, T_w_i_init, vel_w_i_init, bg_init, ba_init, true));
 
         marg_data.order.abs_order_map[last_state_t_ns] =
             std::make_pair(0, POSE_VEL_BIAS_SIZE);
@@ -1189,9 +1189,8 @@ void SqrtKeypointVioEstimator<Scalar_>::marginalize(
 
     for (const int64_t id : states_to_marg_vel_bias) {
       const PoseVelBiasStateWithLin<Scalar>& state = frame_states.at(id);
-      PoseStateWithLin<Scalar> pose(state);
 
-      frame_poses[id] = pose;
+      frame_poses.emplace(id, PoseStateWithLin<Scalar>(state));
       frame_states.erase(id);
       imu_meas.erase(id);
     }
@@ -1351,7 +1350,7 @@ void SqrtKeypointVioEstimator<Scalar_>::optimize() {
     ImuLinData<Scalar> ild = {
         g, gyro_bias_sqrt_weight, accel_bias_sqrt_weight, {}};
     for (const auto& kv : imu_meas) {
-      ild.imu_meas[kv.first] = &kv.second;
+      ild.imu_meas.emplace(kv.first, &kv.second);
     }
 
     {

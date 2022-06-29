@@ -218,7 +218,7 @@ class PatchOpticalFlow : public OpticalFlowBase {
                                .squaredNorm();
 
             if (dist2 < config.optical_flow_max_recovered_dist2) {
-              result[id] = transform_2;
+              result.emplace(id, transform_2);
             }
           }
         }
