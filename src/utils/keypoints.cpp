@@ -166,32 +166,39 @@ void detectKeypoints(
   kd.corner_angles.clear();
   kd.corner_descriptors.clear();
 
-  const size_t x_start = (img_raw.w % PATCH_SIZE) / 2;
-  const size_t x_stop = x_start + PATCH_SIZE * (img_raw.w / PATCH_SIZE - 1);
+  // const size_t x_start = (img_raw.w % PATCH_SIZE) / 2;
+  // const size_t x_stop = x_start + PATCH_SIZE * (img_raw.w / PATCH_SIZE - 1);
 
-  const size_t y_start = (img_raw.h % PATCH_SIZE) / 2;
-  const size_t y_stop = y_start + PATCH_SIZE * (img_raw.h / PATCH_SIZE - 1);
+  // const size_t y_start = (img_raw.h % PATCH_SIZE) / 2;
+  // const size_t y_stop = y_start + PATCH_SIZE * (img_raw.h / PATCH_SIZE - 1);
 
   //  std::cerr << "x_start " << x_start << " x_stop " << x_stop << std::endl;
   //  std::cerr << "y_start " << y_start << " y_stop " << y_stop << std::endl;
 
-  Eigen::MatrixXi cells;
-  cells.setZero(img_raw.h / PATCH_SIZE + 1, img_raw.w / PATCH_SIZE + 1);
+  // Eigen::MatrixXi cells;
+  // cells.setZero(img_raw.h / PATCH_SIZE + 1, img_raw.w / PATCH_SIZE + 1);
+
+  Cells cells(img_raw.w, img_raw.h, PATCH_SIZE);
 
   for (const Eigen::Vector2d& p : current_points) {
-    if (p[0] >= x_start && p[1] >= y_start && p[0] < x_stop + PATCH_SIZE &&
-        p[1] < y_stop + PATCH_SIZE) {
-      int x = (p[0] - x_start) / PATCH_SIZE;
-      int y = (p[1] - y_start) / PATCH_SIZE;
 
-      cells(y, x) += 1;
-    }
+    cells.increment(p);
+    // if (p[0] >= x_start && p[1] >= y_start && p[0] < x_stop + PATCH_SIZE &&
+    //     p[1] < y_stop + PATCH_SIZE) {
+    //   int x = (p[0] - x_start) / PATCH_SIZE;
+    //   int y = (p[1] - y_start) / PATCH_SIZE;
+
+    //   cells(y, x) += 1;
+    // }
   }
 
-  for (size_t x = x_start; x <= x_stop; x += PATCH_SIZE) {
-    for (size_t y = y_start; y <= y_stop; y += PATCH_SIZE) {
-      if (cells((y - y_start) / PATCH_SIZE, (x - x_start) / PATCH_SIZE) > 0)
+  for (size_t x = cells.x_start; x <= cells.x_stop; x += PATCH_SIZE) {
+    for (size_t y = cells.y_start; y <= cells.y_stop; y += PATCH_SIZE) {
+
+      if (cells.getCell(x, y) > 0)
         continue;
+      // if (cells((y - y_start) / PATCH_SIZE, (x - x_start) / PATCH_SIZE) > 0)
+      //   continue;
 
       const basalt::Image<const uint16_t> sub_img_raw =
           img_raw.SubImage(x, y, PATCH_SIZE, PATCH_SIZE);

@@ -90,6 +90,8 @@ class OpticalFlowBase {
  protected:
   // hm: this is to keep track of the last keypoint id from the previous timestamp
   KeypointId pre_last_keypoint_id;
+  size_t seq = 0;
+  int ADD_STEREO_ONLY_INTERVAL = 8;
 };
 
 class OpticalFlowFactory {

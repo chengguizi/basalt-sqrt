@@ -50,6 +50,46 @@ namespace basalt {
 
 typedef std::bitset<256> Descriptor;
 
+class Cells {
+
+public:
+  Cells(size_t width, size_t height, int patch_size) : m_patch_size(patch_size) {
+    cells.setZero(height / patch_size + 1, width / patch_size + 1);
+
+    x_start = (width % patch_size) / 2;
+    x_stop = x_start + patch_size * (width / patch_size - 1);
+
+    y_start = (height % patch_size) / 2;
+    y_stop = y_start + patch_size * (height / patch_size - 1);
+  }
+
+  // void setZeros();
+
+  void increment (const Eigen::Vector2d& p) {
+
+    if (p[0] >= x_start && p[1] >= y_start && p[0] < x_stop + m_patch_size &&
+        p[1] < y_stop + m_patch_size) {
+      int x = (p[0] - x_start) / m_patch_size;
+      int y = (p[1] - y_start) / m_patch_size;
+
+      cells(y, x) += 1;
+    }
+  }
+
+  int getCell(size_t x, size_t y) {
+
+    return cells((y - y_start) / m_patch_size, (x - x_start) / m_patch_size);
+  }
+
+  size_t x_start, x_stop, y_start, y_stop;
+
+private:
+  Eigen::MatrixXi cells;
+
+  
+  int m_patch_size;
+};
+
 void detectKeypointsMapping(const basalt::Image<const uint16_t>& img_raw,
                             KeypointsData& kd, int num_features);
 

@@ -412,7 +412,12 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       Eigen::aligned_vector<Eigen::Vector2d> pts0;
 
       for (const auto& kv : transforms->observations.at(k)) {
-        pts0.emplace_back(kv.second.translation().cast<double>());
+
+        // hm: for the detection, if it is a stereo detection, then we do not detect for new points
+        if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || k + 1 >= calib.intrinsics.size())
+          pts0.emplace_back(kv.second.translation().cast<double>());
+        else if (transforms->observations.at(k+1).count(kv.first))
+          pts0.emplace_back(kv.second.translation().cast<double>());
       }
 
       KeypointsData kd;
@@ -423,26 +428,52 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
           new_poses1;
 
-      for (size_t i = 0; i < kd.corners.size(); i++) {
-        Eigen::AffineCompact2f transform;
-        transform.setIdentity();
-        transform.translation() = kd.corners[i].cast<Scalar>();
+      
+      if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || k + 1 >= calib.intrinsics.size()) {
+        for (size_t i = 0; i < kd.corners.size(); i++) {
+          Eigen::AffineCompact2f transform;
+          transform.setIdentity();
+          transform.translation() = kd.corners[i].cast<Scalar>();
 
-        transforms->observations.at(k)[last_keypoint_id] = transform;
-        new_poses0[last_keypoint_id] = transform;
+          transforms->observations.at(k)[last_keypoint_id] = transform;
+          new_poses0[last_keypoint_id] = transform;
 
-        last_keypoint_id++;
-      }
+          last_keypoint_id++;
+        }
 
-      if (k + 1 <= calib.intrinsics.size()) {
+        if (k + 1 < calib.intrinsics.size()) {
+          trackPoints(pyramid->at(k), pyramid->at(k+1), new_poses0, new_poses1, k, k+1);
+
+          for (const auto& kv : new_poses1) {
+            transforms->observations.at(k+1).emplace(kv);
+          }
+        }
+      }else {
+        // we only add stereo matches here
+
+        for (size_t i = 0; i < kd.corners.size(); i++) {
+          Eigen::AffineCompact2f transform;
+          transform.setIdentity();
+          transform.translation() = kd.corners[i].cast<Scalar>();
+          new_poses0[last_keypoint_id] = transform;
+          last_keypoint_id++;
+        }
+
+        BASALT_ASSERT(k + 1 < calib.intrinsics.size());
+
         trackPoints(pyramid->at(k), pyramid->at(k+1), new_poses0, new_poses1, k, k+1);
 
         for (const auto& kv : new_poses1) {
+          transforms->observations.at(k)[kv.first] = new_poses0[kv.first];
           transforms->observations.at(k+1).emplace(kv);
         }
+
       }
+
+      
     }
     
+    seq++;
   }
 
   void filterPoints() {

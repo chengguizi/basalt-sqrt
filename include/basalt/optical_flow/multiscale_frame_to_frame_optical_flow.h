@@ -377,8 +377,15 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
         if (point_level <= level + 1 && point_level >= level - 1) {
           // if (point_level == level) {
           // const Scalar scale_point = 1 << point_level;
-          pts.emplace_back(
-              (kv.second.translation() / scale).template cast<double>());
+
+          // pts.emplace_back(
+          //     (kv.second.translation() / scale).template cast<double>());
+
+        // hm: for the detection, if it is a stereo detection, then we do not detect for new points
+        if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || 1 == calib.intrinsics.size())
+          pts.emplace_back((kv.second.translation() / scale).template cast<double>());
+        else if (transforms->observations.at(1).count(kv.first))
+          pts.emplace_back((kv.second.translation() / scale).template cast<double>());
         }
       }
 
@@ -387,30 +394,68 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
       // const Scalar scale = 1 << level;
 
-      for (size_t i = 0; i < kd.corners.size(); i++) {
-        Eigen::AffineCompact2f transform;
-        transform.setIdentity();
-        transform.translation() =
-            kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
+            
+      if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || 1 == calib.intrinsics.size()) {
 
-        transforms->observations.at(0)[last_keypoint_id] = transform;
-        transforms->pyramid_levels.at(0)[last_keypoint_id] = level;
-        new_poses_main[last_keypoint_id] = transform;
-        new_pyramid_levels_main[last_keypoint_id] = level;
+        for (size_t i = 0; i < kd.corners.size(); i++) {
+          Eigen::AffineCompact2f transform;
+          transform.setIdentity();
+          transform.translation() =
+              kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
 
-        last_keypoint_id++;
-      }
+          transforms->observations.at(0)[last_keypoint_id] = transform;
+          transforms->pyramid_levels.at(0)[last_keypoint_id] = level;
+          new_poses_main[last_keypoint_id] = transform;
+          new_pyramid_levels_main[last_keypoint_id] = level;
 
-      trackPoints(pyramid->at(0), pyramid->at(1), new_poses_main,
-                  new_pyramid_levels_main, new_poses_stereo,
-                  new_pyramid_levels_stereo);
+          last_keypoint_id++;
+        }
 
-      for (const auto& kv : new_poses_stereo) {
-        transforms->observations.at(1).emplace(kv);
-        transforms->pyramid_levels.at(1)[kv.first] =
-            new_pyramid_levels_stereo.at(kv.first);
+        trackPoints(pyramid->at(0), pyramid->at(1), new_poses_main,
+                    new_pyramid_levels_main, new_poses_stereo,
+                    new_pyramid_levels_stereo);
+
+        for (const auto& kv : new_poses_stereo) {
+          transforms->observations.at(1).emplace(kv);
+          transforms->pyramid_levels.at(1)[kv.first] =
+              new_pyramid_levels_stereo.at(kv.first);
+        }
+      }else {
+
+        for (size_t i = 0; i < kd.corners.size(); i++) {
+          Eigen::AffineCompact2f transform;
+          transform.setIdentity();
+          transform.translation() =
+              kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
+
+          
+          new_poses_main[last_keypoint_id] = transform;
+          new_pyramid_levels_main[last_keypoint_id] = level;
+
+          last_keypoint_id++;
+        }
+
+        trackPoints(pyramid->at(0), pyramid->at(1), new_poses_main,
+                    new_pyramid_levels_main, new_poses_stereo,
+                    new_pyramid_levels_stereo);
+
+        // only add stereo matches
+
+        for (const auto& kv : new_poses_stereo) {
+
+          transforms->observations.at(0)[kv.first] = new_poses_main[kv.first];
+          transforms->pyramid_levels.at(0)[kv.first] = level;
+
+
+          transforms->observations.at(1).emplace(kv);
+          transforms->pyramid_levels.at(1)[kv.first] =
+              new_pyramid_levels_stereo.at(kv.first);
+        }
+
       }
     }
+
+    seq++;
   }
 
   void filterPoints() {
