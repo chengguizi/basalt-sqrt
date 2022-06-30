@@ -92,6 +92,7 @@ class OpticalFlowBase {
  protected:
   size_t seq = 0;
   int ADD_STEREO_ONLY_INTERVAL = 8;
+  int MAX_TRACK_LEVELS = 2;
 };
 
 class OpticalFlowFactory {

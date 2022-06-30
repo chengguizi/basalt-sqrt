@@ -52,6 +52,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/image/image_pyr.h>
 #include <basalt/utils/keypoints.h>
 
+#include <opencv2/features2d.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+
 namespace basalt {
 
 /// MultiscaleFrameToFrameOpticalFlow is the same as FrameToFrameOpticalFlow,
@@ -83,10 +87,15 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
     patch_coord = PatchT::pattern2.template cast<float>();
 
     if (calib.intrinsics.size() > 1) {
-      Eigen::Matrix4d Ed;
-      Sophus::SE3d T_i_j = calib.T_i_c[0].inverse() * calib.T_i_c[1];
-      computeEssential(T_i_j, Ed);
-      E = Ed.cast<Scalar>();
+
+      for (size_t k = 0; k < calib.intrinsics.size(); k+=2)
+      {
+        std::cout << "Optical flow initialise camera " << k << " and " << k+1;
+        Eigen::Matrix4d Ed;
+        Sophus::SE3d T_i_j = calib.T_i_c[k].inverse() * calib.T_i_c[k+1];
+        computeEssential(T_i_j, Ed);
+        E.push_back(Ed.cast<Scalar>());
+      }
     }
 
     processing_thread.reset(new std::thread(
@@ -141,6 +150,12 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
       transforms->input_images = new_img_vec;
 
+      // initialise the first previous last point to be 
+      transforms->previous_last_keypoint_ids.push_back(last_keypoint_id);
+
+      BASALT_ASSERT(transforms->previous_last_keypoint_ids.size() == 1);
+      BASALT_ASSERT(last_keypoint_id == 0);
+
       addPoints();
       filterPoints();
 
@@ -172,8 +187,14 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
         trackPoints(old_pyramid->at(i), pyramid->at(i),
                     transforms->observations[i], transforms->pyramid_levels[i],
                     new_transforms->observations[i],
-                    new_transforms->pyramid_levels[i]);
+                    new_transforms->pyramid_levels[i], i, i);
       }
+
+      // add in previous keypoint ids information
+      new_transforms->previous_last_keypoint_ids = transforms->previous_last_keypoint_ids;
+      new_transforms->previous_last_keypoint_ids.push_front(last_keypoint_id);
+      while (new_transforms->previous_last_keypoint_ids.size() > 10)
+        new_transforms->previous_last_keypoint_ids.pop_back();
 
       // std::cout << t_ns << ": Could track "
       //           << new_transforms->observations.at(0).size() << " points."
@@ -184,11 +205,63 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
       addPoints();
       filterPoints();
-    }
 
-    // hm: addtional metadata regarding the ids that are newly added
-    // transforms->last_keypoint_id = last_keypoint_id;
-    // transforms->pre_last_keypoint_id = pre_last_keypoint_id;
+      //draw matching points
+      if(config.feature_match_show){
+
+        for (size_t k=0; k < calib.intrinsics.size(); k+=2)
+        {
+          std::vector<cv::KeyPoint> kp1, kp2, kp0;
+          std::vector<cv::DMatch> match;
+          int match_id = 0;
+          basalt::Image<const uint16_t> img_raw_1(pyramid->at(k).lvl(1)), img_raw_2(pyramid->at(k+1).lvl(1));
+          int w = img_raw_1.w; 
+          int h = img_raw_1.h;
+          cv::Mat img1(h, w, CV_8U);
+          cv::Mat img2(h, w, CV_8U);
+          for(int y = 0; y < h; y++){
+            uchar* sub_ptr_1 = img1.ptr(y);
+            uchar* sub_ptr_2 = img2.ptr(y);
+
+            for(int x = 0; x < w; x++){
+              sub_ptr_1[x] = (img_raw_1(x,y) >> 8);
+              sub_ptr_2[x] = (img_raw_2(x,y) >> 8);
+
+            }
+          }
+
+          for(const auto& kv: transforms->observations[k]){
+            
+            size_t kp1_level = transforms->pyramid_levels[k].at(kv.first);
+
+            auto it = transforms->observations[k+1].find(kv.first);
+            if(it != transforms->observations[k+1].end()){
+
+              size_t kp2_level = transforms->pyramid_levels[k+1].at(kv.first);
+
+              // TODO: remove
+              BASALT_ASSERT(kp1_level == kp2_level);
+              
+              kp1.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 5*(kp1_level+1) ));
+              kp2.push_back(cv::KeyPoint(cv::Point2f(it->second.translation()[0]/2, it->second.translation()[1]/2), 5*(kp2_level+1) ));
+              match.push_back(cv::DMatch(match_id,match_id,1));
+              match_id++;
+            }
+            else{
+              kp0.push_back(cv::KeyPoint(cv::Point2f(kv.second.translation()[0]/2, kv.second.translation()[1]/2), 5*(kp1_level + 1)));
+            }
+          }
+          cv::Mat image_show(h, w*2, CV_8U);
+          cv::drawKeypoints(img1, kp0, img1, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+          cv::drawMatches(img1,kp1,img2,kp2,match, image_show, cv::Scalar::all(-1), cv::Scalar::all(-1), std::vector< char >(), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+          std::string title = "matching result" + std::to_string(k/2);
+
+          cv::imshow(title, image_show);
+          cv::waitKey(1);
+        }
+        
+      }
+    }
 
     if (frame_counter % config.optical_flow_skip_frames == 0) {
       try {
@@ -209,7 +282,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
           transform_map_1,
       const std::map<KeypointId, size_t>& pyramid_levels_1,
       Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>& transform_map_2,
-      std::map<KeypointId, size_t>& pyramid_levels_2) const {
+      std::map<KeypointId, size_t>& pyramid_levels_2, int cam_id_1, int cam_id_2) const {
     size_t num_points = transform_map_1.size();
 
     std::vector<KeypointId> ids;
@@ -239,14 +312,39 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
         const Eigen::AffineCompact2f& transform_1 = init_vec[r];
         Eigen::AffineCompact2f transform_2 = transform_1;
 
+        if (cam_id_1 != cam_id_2){
+          // hm: we want to modify the tranlation part of the transform, as we have two diff cameras (assume identical time)
+          Eigen::Vector2f t1 = transform_1.translation();
+          Eigen::Vector4f p1_3d;
+          calib.intrinsics[cam_id_1].unproject(t1, p1_3d);
+          Eigen::Vector4f p2_3d = calib.T_i_c[cam_id_2].so3().inverse() * calib.T_i_c[cam_id_1].so3() * p1_3d;
+          Eigen::Vector2f t2;
+          calib.intrinsics[cam_id_2].project(p2_3d, t2);
+
+          transform_2.translation() = t2;
+
+        }
+
         bool valid = trackPoint(pyr_1, pyr_2, transform_1, pyramid_level[r],
-                                transform_2);
+                                transform_2, cam_id_2);
 
         if (valid) {
           Eigen::AffineCompact2f transform_1_recovered = transform_2;
 
+          if (cam_id_2 != cam_id_1){
+            // hm: we want to modify the tranlation part of the transform, as we have two diff cameras (assume identical time)
+            Eigen::Vector2f t2 = transform_2.translation();
+            Eigen::Vector4f p2_3d;
+            calib.intrinsics[cam_id_2].unproject(t2, p2_3d);
+            Eigen::Vector4f p1_3d = calib.T_i_c[cam_id_1].so3().inverse() * calib.T_i_c[cam_id_2].so3() * p2_3d;
+            Eigen::Vector2f t1;
+            calib.intrinsics[cam_id_1].project(p1_3d, t1);
+
+            transform_1_recovered.translation() = t1;
+          }
+
           valid = trackPoint(pyr_2, pyr_1, transform_2, pyramid_level[r],
-                             transform_1_recovered);
+                             transform_1_recovered, cam_id_1);
 
           if (valid) {
             const Scalar scale = 1 << pyramid_level[r];
@@ -279,12 +377,14 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
                          const basalt::ManagedImagePyr<uint16_t>& pyr,
                          const Eigen::AffineCompact2f& old_transform,
                          const size_t pyramid_level,
-                         Eigen::AffineCompact2f& transform) const {
+                         Eigen::AffineCompact2f& transform, int cam_id_2) const {
     bool patch_valid = true;
 
     transform.linear().setIdentity();
 
-    for (ssize_t level = config.optical_flow_levels;
+    const int max_level = std::min(config.optical_flow_levels, (int)pyramid_level + MAX_TRACK_LEVELS);
+
+    for (ssize_t level = max_level;
          level >= static_cast<ssize_t>(pyramid_level); level--) {
       const Scalar scale = 1 << level;
 
@@ -305,6 +405,8 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
       }
 
       transform_tmp.translation() *= scale;
+      // hm: not implemented the checks yet
+      (void)cam_id_2;
 
       if (patch_valid) {
         transform = transform_tmp;
@@ -355,149 +457,199 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
   }
 
   void addPoints() {
-    KeypointsData kd;
+    
 
-    Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses_main,
-        new_poses_stereo;
-    std::map<KeypointId, size_t> new_pyramid_levels_main,
-        new_pyramid_levels_stereo;
+    const bool stereo_mode = (seq % ADD_STEREO_ONLY_INTERVAL == 0);
 
-    for (ssize_t level = 0;
-         level < static_cast<ssize_t>(config.optical_flow_levels) - 1;
-         level++) {
-      Eigen::aligned_vector<Eigen::Vector2d> pts;
+    for (size_t k=0; k < calib.intrinsics.size(); k+=2) {
+      
 
-      const Scalar scale = 1 << level;
+      int stereo_added = 0;
 
-      for (const auto& kv : transforms->observations.at(0)) {
-        const ssize_t point_level =
-            transforms->pyramid_levels.at(0).at(kv.first);
+      for (ssize_t level = 0;
+          level < static_cast<ssize_t>(config.optical_flow_levels);
+          level++) {
 
-        // do not create points were already points at similar levels are
-        if (point_level <= level + 1 && point_level >= level - 1) {
-          // if (point_level == level) {
-          // const Scalar scale_point = 1 << point_level;
+        KeypointsData kd;
+        Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses_main,
+            new_poses_stereo;
+        std::map<KeypointId, size_t> new_pyramid_levels_main,
+            new_pyramid_levels_stereo;
 
-          // pts.emplace_back(
-          //     (kv.second.translation() / scale).template cast<double>());
+        Eigen::aligned_vector<Eigen::Vector2d> pts;
 
-        // hm: for the detection, if it is a stereo detection, then we do not detect for new points
-        if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || 1 == calib.intrinsics.size())
-          pts.emplace_back((kv.second.translation() / scale).template cast<double>());
-        else if (transforms->observations.at(1).count(kv.first))
-          pts.emplace_back((kv.second.translation() / scale).template cast<double>());
-        }
-      }
+        const Scalar scale = 1 << level;
 
-      detectKeypoints(pyramid->at(0).lvl(level), kd,
-                      config.optical_flow_detection_grid_size, 1, pts);
+        for (const auto& kv : transforms->observations.at(k)) {
+          const ssize_t point_level =
+              transforms->pyramid_levels.at(k).at(kv.first);
 
-      // const Scalar scale = 1 << level;
+          // do not create points were already points at similar levels are
+          if (point_level <= level + 1 && point_level >= level - 1) {
+            // if (point_level == level) {
+            // const Scalar scale_point = 1 << point_level;
 
-            
-      if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || 1 == calib.intrinsics.size()) {
+            // pts.emplace_back(
+            //     (kv.second.translation() / scale).template cast<double>());
 
-        for (size_t i = 0; i < kd.corners.size(); i++) {
-          Eigen::AffineCompact2f transform;
-          transform.setIdentity();
-          transform.translation() =
-              kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
-
-          transforms->observations.at(0)[last_keypoint_id] = transform;
-          transforms->pyramid_levels.at(0)[last_keypoint_id] = level;
-          new_poses_main[last_keypoint_id] = transform;
-          new_pyramid_levels_main[last_keypoint_id] = level;
-
-          last_keypoint_id++;
+          // hm: for the detection, if it is a stereo detection, then we do not detect for new points
+          if (!stereo_mode || 1 == calib.intrinsics.size())
+            pts.emplace_back((kv.second.translation() / scale).template cast<double>());
+          else if (transforms->observations.at(k+1).count(kv.first))
+            pts.emplace_back((kv.second.translation() / scale).template cast<double>());
+          }
         }
 
-        trackPoints(pyramid->at(0), pyramid->at(1), new_poses_main,
-                    new_pyramid_levels_main, new_poses_stereo,
-                    new_pyramid_levels_stereo);
+        detectKeypoints(pyramid->at(k).lvl(level), kd,
+                        config.optical_flow_detection_grid_size / scale, stereo_mode ? 2 : 1, pts);
 
-        for (const auto& kv : new_poses_stereo) {
-          transforms->observations.at(1).emplace(kv);
-          transforms->pyramid_levels.at(1)[kv.first] =
-              new_pyramid_levels_stereo.at(kv.first);
-        }
-      }else {
+        // std::cout << "detected new keypoints at level " << level << " is " << kd.corners.size() << std::endl;
 
-        for (size_t i = 0; i < kd.corners.size(); i++) {
-          Eigen::AffineCompact2f transform;
-          transform.setIdentity();
-          transform.translation() =
-              kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
+              
+        if (!stereo_mode || k + 1 >= calib.intrinsics.size()) {
+
+          for (size_t i = 0; i < kd.corners.size(); i++) {
+            Eigen::AffineCompact2f transform;
+            transform.setIdentity();
+            transform.translation() =
+                kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
+
+            transforms->observations.at(k)[last_keypoint_id] = transform;
+            transforms->pyramid_levels.at(k)[last_keypoint_id] = level;
+            new_poses_main[last_keypoint_id] = transform;
+            new_pyramid_levels_main[last_keypoint_id] = level;
+
+            last_keypoint_id++;
+          }
+
+          if (k + 1 < calib.intrinsics.size()) {
+            trackPoints(pyramid->at(k), pyramid->at(k+1), new_poses_main,
+                        new_pyramid_levels_main, new_poses_stereo,
+                        new_pyramid_levels_stereo, k, k+1);
+
+            for (const auto& kv : new_poses_stereo) {
+              transforms->observations.at(k+1).emplace(kv);
+              transforms->pyramid_levels.at(k+1)[kv.first] =
+                  new_pyramid_levels_stereo.at(kv.first);
+
+            }
+          }
 
           
-          new_poses_main[last_keypoint_id] = transform;
-          new_pyramid_levels_main[last_keypoint_id] = level;
+        }else {
 
-          last_keypoint_id++;
+          for (size_t i = 0; i < kd.corners.size(); i++) {
+            Eigen::AffineCompact2f transform;
+            transform.setIdentity();
+            transform.translation() =
+                kd.corners[i].cast<Scalar>() * scale;  // TODO cast float?
+
+            
+            new_poses_main[last_keypoint_id] = transform;
+            new_pyramid_levels_main[last_keypoint_id] = level;
+
+            last_keypoint_id++;
+          }
+
+          BASALT_ASSERT(k + 1 < calib.intrinsics.size());
+
+          trackPoints(pyramid->at(k), pyramid->at(k+1), new_poses_main,
+                      new_pyramid_levels_main, new_poses_stereo,
+                      new_pyramid_levels_stereo, k, k+1);
+
+          // only add stereo matches
+
+          for (const auto& kv : new_poses_stereo) {
+
+            transforms->observations.at(k)[kv.first] = new_poses_main[kv.first];
+            transforms->pyramid_levels.at(k)[kv.first] = level;
+
+            transforms->observations.at(k+1).emplace(kv);
+            transforms->pyramid_levels.at(k+1)[kv.first] =
+                new_pyramid_levels_stereo.at(kv.first);
+            stereo_added++;
+          }
+
         }
-
-        trackPoints(pyramid->at(0), pyramid->at(1), new_poses_main,
-                    new_pyramid_levels_main, new_poses_stereo,
-                    new_pyramid_levels_stereo);
-
-        // only add stereo matches
-
-        for (const auto& kv : new_poses_stereo) {
-
-          transforms->observations.at(0)[kv.first] = new_poses_main[kv.first];
-          transforms->pyramid_levels.at(0)[kv.first] = level;
-
-
-          transforms->observations.at(1).emplace(kv);
-          transforms->pyramid_levels.at(1)[kv.first] =
-              new_pyramid_levels_stereo.at(kv.first);
-        }
-
       }
+
+      if (stereo_added > 0)
+            std::cout << k/2 << ":extra stereo added at seq " << seq << " = " << stereo_added << std::endl;
     }
 
-    seq++;
+    
+    if (config.optical_flow_more_stereo_matches)
+      seq++;
+    else
+      seq = 1;
   }
 
   void filterPoints() {
-    std::set<KeypointId> lm_to_remove;
 
-    std::vector<KeypointId> kpid;
-    Eigen::aligned_vector<Eigen::Vector2f> proj0, proj1;
-
-    for (const auto& kv : transforms->observations.at(1)) {
-      auto it = transforms->observations.at(0).find(kv.first);
-
-      if (it != transforms->observations.at(0).end()) {
-        proj0.emplace_back(it->second.translation());
-        proj1.emplace_back(kv.second.translation());
-        kpid.emplace_back(kv.first);
+    // hm: filter points based on input queue
+    {
+      KeypointId id_to_remove;
+      while(input_filter_ids.try_pop(id_to_remove))
+      {
+        std::cout << "removing kp " << id_to_remove << "in optical flow" << std::endl;
+        for (size_t k=0; k < calib.intrinsics.size(); k++) {
+          if (transforms->observations.at(k).count(id_to_remove))
+            transforms->observations.at(k).erase(id_to_remove);
+        }
       }
     }
 
-    Eigen::aligned_vector<Eigen::Vector4f> p3d_main, p3d_stereo;
-    std::vector<bool> p3d_main_success, p3d_stereo_success;
+    // filter points for stereo setup
 
-    calib.intrinsics[0].unproject(proj0, p3d_main, p3d_main_success);
-    calib.intrinsics[1].unproject(proj1, p3d_stereo, p3d_stereo_success);
+    transforms->num_stereo_matches = 0;
 
-    for (size_t i = 0; i < p3d_main_success.size(); i++) {
-      if (p3d_main_success[i] && p3d_stereo_success[i]) {
-        const double epipolar_error =
-            std::abs(p3d_main[i].transpose() * E * p3d_stereo[i]);
+    if (calib.intrinsics.size() < 2) return;
 
-        const Scalar scale = 1 << transforms->pyramid_levels.at(0).at(kpid[i]);
+    for (size_t k=0; k < calib.intrinsics.size(); k+=2)
+    {
+      std::set<KeypointId> lm_to_remove;
 
-        if (epipolar_error > config.optical_flow_epipolar_error * scale) {
+      std::vector<KeypointId> kpid;
+      Eigen::aligned_vector<Eigen::Vector2f> proj0, proj1;
+
+      for (const auto& kv : transforms->observations.at(k+1)) {
+        auto it = transforms->observations.at(k).find(kv.first);
+
+        if (it != transforms->observations.at(k).end()) {
+          proj0.emplace_back(it->second.translation());
+          proj1.emplace_back(kv.second.translation());
+          kpid.emplace_back(kv.first);
+        }
+      }
+
+      Eigen::aligned_vector<Eigen::Vector4f> p3d_main, p3d_stereo;
+      std::vector<bool> p3d_main_success, p3d_stereo_success;
+
+      calib.intrinsics[k].unproject(proj0, p3d_main, p3d_main_success);
+      calib.intrinsics[k+1].unproject(proj1, p3d_stereo, p3d_stereo_success);
+
+      for (size_t i = 0; i < p3d_main_success.size(); i++) {
+        if (p3d_main_success[i] && p3d_stereo_success[i]) {
+          const double epipolar_error =
+              std::abs(p3d_main[i].transpose() * E.at(k/2) * p3d_stereo[i]);
+
+          const Scalar scale = 1 << transforms->pyramid_levels.at(k).at(kpid[i]);
+
+          if (epipolar_error > config.optical_flow_epipolar_error * scale) {
+            lm_to_remove.emplace(kpid[i]);
+          }
+        } else {
           lm_to_remove.emplace(kpid[i]);
         }
-      } else {
-        lm_to_remove.emplace(kpid[i]);
       }
-    }
 
-    for (int id : lm_to_remove) {
-      transforms->observations.at(1).erase(id);
+      for (int id : lm_to_remove) {
+        transforms->observations.at(k+1).erase(id);
+      }
+
+      transforms->num_stereo_matches += transforms->observations.at(k+1).size();
     }
+    
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -516,7 +668,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
       pyramid;
 
   // map from stereo pair -> essential matrix
-  Matrix4 E;
+  Eigen::aligned_vector<Matrix4> E;
 
   std::shared_ptr<std::thread> processing_thread;
 };
