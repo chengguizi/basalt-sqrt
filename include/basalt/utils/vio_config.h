@@ -54,6 +54,7 @@ struct VioConfig {
   float optical_flow_epipolar_error;
   int optical_flow_skip_frames;
   bool feature_match_show; //Yu: add feature match show func for debug
+  bool optical_flow_more_stereo_matches;
   bool force_init_no_yaw;
 
   LinearizationType vio_linearization_type;

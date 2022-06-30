@@ -144,7 +144,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
       addPoints();
       filterPoints();
 
-      BASALT_ASSERT(transforms->pre_last_keypoint_id == 0);
+      // BASALT_ASSERT(transforms->pre_last_keypoint_id == 0);
 
     } else {
       t_ns = curr_t_ns;
@@ -187,8 +187,8 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
     }
 
     // hm: addtional metadata regarding the ids that are newly added
-    transforms->last_keypoint_id = last_keypoint_id;
-    transforms->pre_last_keypoint_id = pre_last_keypoint_id;
+    // transforms->last_keypoint_id = last_keypoint_id;
+    // transforms->pre_last_keypoint_id = pre_last_keypoint_id;
 
     if (frame_counter % config.optical_flow_skip_frames == 0) {
       try {

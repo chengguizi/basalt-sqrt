@@ -108,7 +108,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(
   T_w_i_init = T_w_i.cast<Scalar>();
 
   last_state_t_ns = t_ns;
-  frame_poses[t_ns] = PoseStateWithLin<Scalar>(t_ns, T_w_i_init, true);
+  frame_poses.emplace(t_ns, PoseStateWithLin<Scalar>(t_ns, T_w_i_init, true));
 
   marg_data.order.abs_order_map[t_ns] = std::make_pair(0, POSE_SIZE);
   marg_data.order.total_size = POSE_SIZE;
@@ -152,8 +152,8 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
       if (!initialized) {
         last_state_t_ns = curr_frame->t_ns;
 
-        frame_poses[last_state_t_ns] =
-            PoseStateWithLin(last_state_t_ns, T_w_i_init, true);
+        frame_poses.emplace(last_state_t_ns,
+            PoseStateWithLin(last_state_t_ns, T_w_i_init, true));
 
         marg_data.order.abs_order_map[last_state_t_ns] =
             std::make_pair(0, POSE_SIZE);
@@ -232,8 +232,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
     last_state_t_ns = opt_flow_meas->t_ns;
 
-    PoseStateWithLin next_state(opt_flow_meas->t_ns, curr_state.getPose());
-    frame_poses[last_state_t_ns] = next_state;
+    frame_poses.emplace(last_state_t_ns, PoseStateWithLin(opt_flow_meas->t_ns, curr_state.getPose()));
   }
 
   // invariants: opt_flow_meas->t_ns is last pose state and equal to

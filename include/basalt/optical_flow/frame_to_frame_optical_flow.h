@@ -146,10 +146,14 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       transforms->input_images = new_img_vec;
 
+      // initialise the first previous last point to be 
+      transforms->previous_last_keypoint_ids.push_back(last_keypoint_id);
+
+      BASALT_ASSERT(transforms->previous_last_keypoint_ids.size() == 1);
+      BASALT_ASSERT(last_keypoint_id == 0);
+
       addPoints();
       filterPoints();
-
-      BASALT_ASSERT(transforms->pre_last_keypoint_id == 0);
 
     } else {
       t_ns = curr_t_ns;
@@ -177,6 +181,12 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                     transforms->observations[i],
                     new_transforms->observations[i], i, i);
       }
+
+      // add in previous keypoint ids information
+      new_transforms->previous_last_keypoint_ids = transforms->previous_last_keypoint_ids;
+      new_transforms->previous_last_keypoint_ids.push_front(last_keypoint_id);
+      while (new_transforms->previous_last_keypoint_ids.size() > 10)
+        new_transforms->previous_last_keypoint_ids.pop_back();
 
       transforms = new_transforms;
       transforms->input_images = new_img_vec;
@@ -210,9 +220,6 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
           for(const auto& kv: transforms->observations[k]){
             
-            // hm: skip keypoints that are too new
-            if (kv.first > pre_last_keypoint_id)
-              continue;
             
             auto it = transforms->observations[k+1].find(kv.first);
             if(it != transforms->observations[k+1].end()){
@@ -238,9 +245,6 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }
     }
 
-    // hm: addtional metadata regarding the ids that are newly added
-    transforms->last_keypoint_id = last_keypoint_id;
-    transforms->pre_last_keypoint_id = pre_last_keypoint_id;
 
     if (output_queue && frame_counter % config.optical_flow_skip_frames == 0) {
       output_queue->push(transforms);
@@ -405,8 +409,9 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   }
 
   void addPoints() {
-    pre_last_keypoint_id = last_keypoint_id;
     Eigen::aligned_vector<Eigen::Vector2d> pts0;
+
+    const bool stereo_mode = (seq % ADD_STEREO_ONLY_INTERVAL == 0);
 
     for (size_t k=0; k < calib.intrinsics.size(); k+=2)
     {
@@ -415,7 +420,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       for (const auto& kv : transforms->observations.at(k)) {
 
         // hm: for the detection, if it is a stereo detection, then we do not detect for new points
-        if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || k + 1 >= calib.intrinsics.size())
+        if (!stereo_mode || k + 1 >= calib.intrinsics.size())
           pts0.emplace_back(kv.second.translation().cast<double>());
         else if (transforms->observations.at(k+1).count(kv.first))
           pts0.emplace_back(kv.second.translation().cast<double>());
@@ -424,13 +429,13 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       KeypointsData kd;
 
       detectKeypoints(pyramid->at(k).lvl(0), kd,
-                      config.optical_flow_detection_grid_size, 1, pts0);
+                      config.optical_flow_detection_grid_size, stereo_mode ? 2 : 1, pts0);
 
       Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
           new_poses1;
 
       
-      if (seq % ADD_STEREO_ONLY_INTERVAL != 0 || k + 1 >= calib.intrinsics.size()) {
+      if (!stereo_mode || k + 1 >= calib.intrinsics.size()) {
         for (size_t i = 0; i < kd.corners.size(); i++) {
           Eigen::AffineCompact2f transform;
           transform.setIdentity();
@@ -452,6 +457,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }else {
         // we only add stereo matches here
 
+        int stereo_added = 0;
         for (size_t i = 0; i < kd.corners.size(); i++) {
           Eigen::AffineCompact2f transform;
           transform.setIdentity();
@@ -467,14 +473,19 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         for (const auto& kv : new_poses1) {
           transforms->observations.at(k)[kv.first] = new_poses0[kv.first];
           transforms->observations.at(k+1).emplace(kv);
+          stereo_added++;
         }
 
+        if (stereo_added > 0)
+          std::cout << "extra stereo added at seq " << seq << " = " << stereo_added << std::endl;
       }
-
       
     }
     
-    seq++;
+    if (config.optical_flow_more_stereo_matches)
+      seq++;
+    else
+      seq = 1;
   }
 
   void filterPoints() {

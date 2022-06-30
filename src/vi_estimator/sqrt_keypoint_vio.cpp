@@ -54,6 +54,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <chrono>
 
+constexpr int OPTICAL_FLOW_WAIT_STABILITY = 2;
+
 namespace basalt {
 
 template <class Scalar_>
@@ -192,15 +194,17 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
         break;
       }
 
-      if (curr_frame->pre_last_keypoint_id == 0){
-        std::cout << "optical flow not stabilised yet, continue waiting..." << std::endl;
-        continue;
-      }
-
       // Correct camera time offset
       // curr_frame->t_ns += calib.cam_time_offset_ns;
 
       if (!initialized) {
+
+        if (curr_frame->previous_last_keypoint_ids.size() < OPTICAL_FLOW_WAIT_STABILITY ||
+          (curr_frame->previous_last_keypoint_ids.at(OPTICAL_FLOW_WAIT_STABILITY - 1) == 0)){
+          std::cout << "optical flow not stabilised yet, continue waiting..." << std::endl;
+          continue;
+        }
+
         while (data->t_ns < curr_frame->t_ns) {
           data = popFromImuDataQueue();
           if (!data) break;
@@ -417,14 +421,26 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
     for (size_t i = k; i <= k+1; i++) {
       TimeCamId tcid_target(opt_flow_meas->t_ns, i);
 
+      int considered_obs = 0;
+      int existed_obs = 0;
+      const size_t allowed_last_keypoint_id = opt_flow_meas->previous_last_keypoint_ids.at(OPTICAL_FLOW_WAIT_STABILITY-1);
+
+      // std::cout << "allowed_last_keypoint_id = " << allowed_last_keypoint_id << std::endl;
+
+      BASALT_ASSERT(allowed_last_keypoint_id > 0);
+      
       for (const auto& kv_obs : opt_flow_meas->observations[i]) {
         int kpt_id = kv_obs.first;
 
         // hm: skip all observations that are new in the last frame (probably unstable)
-        if ( kv_obs.first > opt_flow_meas->pre_last_keypoint_id)
+        if ( kv_obs.first >= allowed_last_keypoint_id)
           continue;
+        else
+          considered_obs++;
 
         if (lmdb.landmarkExists(kpt_id)) {
+          existed_obs++;
+
           const TimeCamId& tcid_host = lmdb.getLandmark(kpt_id).host_kf_id;
 
           KeypointObservation<Scalar> kobs;
@@ -454,6 +470,9 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
             unconnected_stereo_obs0.emplace(kpt_id);
         }
       }
+
+      // std::cout << "camera " << i << " has total obs " << opt_flow_meas->observations[i].size() << ", considered " 
+      //   << considered_obs << ", and " << existed_obs << " already in ldmarks " << std::endl;
     }
 
     connected_vec.push_back(connected0);
@@ -587,34 +606,6 @@ bool SqrtKeypointVioEstimator<Scalar_>::measure(
       //   frames_after_kf > config.vio_min_frames_after_kf)
       //   take_kf = true;
 
-    }else{
-
-      assert(kf_ids.size() > 0);
-
-      basalt::FrameId last_kf = *kf_ids.crbegin();
-
-      Eigen::Vector3<Scalar> trans;
-      if (frame_states.count(last_kf))
-        trans = frame_states.at(last_kf).getState().T_w_i.translation();
-      else
-        trans = frame_poses.at(last_kf).getPose().translation();
-
-      // hm: check if we have move sufficiently far    
-      try {
-        const double max_dist_bt_keyframes = 1.0;
-        double moved_dist = (frame_states.at(last_state_t_ns).getState().T_w_i.translation() - trans).norm();
-        if (moved_dist > max_dist_bt_keyframes){
-          std::cout << "Creating KF because of moved distance in meters " << moved_dist << std::endl;
-          take_kf = true;
-        }
-          
-      }catch (const std::out_of_range& e){
-        std::cout << e.what() << std::endl;
-        throw std::runtime_error("Out of Range error at max_dist_bt_keyframes checking");
-      }catch(const std::exception& e){
-        std::cout << e.what() << std::endl;
-        throw std::runtime_error("other exception at max_dist_bt_keyframes checking");
-      }
     }
 
     if (config.vio_debug) {
@@ -1675,6 +1666,18 @@ void SqrtKeypointVioEstimator<Scalar_>::optimize() {
           }
         }
       }
+
+      // if (it == config.vio_filter_iteration) {
+      //   // hm: vio_outlier_threshold is passed to computeError
+      //   // hm: minimum number of observations is set to 2
+
+      //   try{
+      //     this->filterOutliers(static_cast<Scalar>(config.vio_outlier_threshold), 2);
+      //   }catch(const std::exception& e){
+      //     throw std::runtime_error("filteroutliers runtime error");
+      //   }
+        
+      // }
     }
 
     stats.add("optimize", timer_total.elapsed()).format("ms");

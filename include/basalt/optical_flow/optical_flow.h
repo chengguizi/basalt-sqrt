@@ -36,6 +36,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <memory>
 
+#include <deque>
+
 #include <Eigen/Geometry>
 
 #include <basalt/utils/vio_config.h>
@@ -63,9 +65,7 @@ struct OpticalFlowResult {
 
   int64_t t_ns;
 
-  // hm: record of ids that are newly added, and those are at least 2 image seq old
-  KeypointId last_keypoint_id;
-  KeypointId pre_last_keypoint_id;
+  std::deque<KeypointId> previous_last_keypoint_ids;
 
   size_t num_stereo_matches;
   
@@ -90,8 +90,6 @@ class OpticalFlowBase {
   Eigen::MatrixXf patch_coord;
 
  protected:
-  // hm: this is to keep track of the last keypoint id from the previous timestamp
-  KeypointId pre_last_keypoint_id;
   size_t seq = 0;
   int ADD_STEREO_ONLY_INTERVAL = 8;
 };
