@@ -633,9 +633,7 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
           const double epipolar_error =
               std::abs(p3d_main[i].transpose() * E.at(k/2) * p3d_stereo[i]);
 
-          const Scalar scale = 1 << transforms->pyramid_levels.at(k).at(kpid[i]);
-
-          if (epipolar_error > config.optical_flow_epipolar_error * scale) {
+          if (epipolar_error > config.optical_flow_epipolar_error) {
             lm_to_remove.emplace(kpid[i]);
           }
         } else {
