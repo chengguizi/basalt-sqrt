@@ -187,6 +187,8 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
 
       if (config.vio_enforce_realtime) {
         // drop current frame if another frame is already in the queue.
+        if (vision_data_queue.size() > 1)
+          std::cout << "WARN: enforce realtime: skipping " << vision_data_queue.size() - 1 << " frames." << std::endl;
         while (!vision_data_queue.empty()) vision_data_queue.pop(curr_frame);
       }
 
@@ -352,6 +354,9 @@ template <class Scalar_>
 typename ImuData<Scalar_>::Ptr
 SqrtKeypointVioEstimator<Scalar_>::popFromImuDataQueue() {
   ImuData<double>::Ptr data;
+
+  if (imu_data_queue.size() < 1)
+    std::cout << "WARN: imu_data_queue size low = " << imu_data_queue.size() << ", imu data arriving too slowly?" << std::endl;
   imu_data_queue.pop(data);
 
   if constexpr (std::is_same_v<Scalar, double>) {
