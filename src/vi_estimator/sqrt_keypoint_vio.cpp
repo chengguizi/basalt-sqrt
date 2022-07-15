@@ -1341,6 +1341,7 @@ void SqrtKeypointVioEstimator<Scalar_>::optimize() {
     stats.add("num_lms", this->lmdb.numLandmarks()).format("count");
     stats.add("num_obs", this->lmdb.numObservations()).format("count");
 
+    // hm: if we have filter outliers within the loop, we should put this within the optimisation block
     // setup landmark blocks
     typename LinearizationBase<Scalar, POSE_SIZE>::Options lqr_options;
     lqr_options.lb_options.huber_parameter = huber_thresh;
@@ -1672,24 +1673,29 @@ void SqrtKeypointVioEstimator<Scalar_>::optimize() {
         }
       }
 
-      // if (it == config.vio_filter_iteration) {
-      //   // hm: vio_outlier_threshold is passed to computeError
-      //   // hm: minimum number of observations is set to 2
-
-      //   try{
-      //     this->filterOutliers(static_cast<Scalar>(config.vio_outlier_threshold), 2);
-      //   }catch(const std::exception& e){
-      //     throw std::runtime_error("filteroutliers runtime error");
-      //   }
-        
-      // }
     }
+
+
 
     stats.add("optimize", timer_total.elapsed()).format("ms");
     stats.add("num_it", it).format("count");
     stats.add("num_it_rejected", it_rejected).format("count");
 
     // TODO: call filterOutliers at least once (also for CG version)
+
+    if (it >= config.vio_filter_iteration) {
+      // hm: vio_outlier_threshold is passed to computeError
+      // hm: minimum number of observations is set to 2
+
+      // std::cout << "Filter Outliers with final iteration = " << it << std::endl;
+
+      try{
+        this->filterOutliers(static_cast<Scalar>(config.vio_outlier_threshold), 2);
+      }catch(const std::exception& e){
+        throw std::runtime_error("filteroutliers runtime error");
+      }
+      
+    }
 
     stats_all_.merge_all(stats);
     stats_sums_.merge_sums(stats);

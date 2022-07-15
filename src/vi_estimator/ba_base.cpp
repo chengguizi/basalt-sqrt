@@ -175,11 +175,13 @@ void BundleAdjustmentBase<Scalar_>::computeError(
         std::visit(
             [&](const auto& cam) {
               for (KeypointId kpt_id : obs_kv.second) {
+                // hm: for each observation, get the landmark object, which is factored in the optimisation
                 const Keypoint<Scalar>& kpt_pos = lmdb.getLandmark(kpt_id);
                 const Vec2& kpt_obs = kpt_pos.obs.at(tcid_t);
 
                 Vec2 res;
 
+                // hm: obtain projection error after transformation
                 bool valid = linearizePoint(kpt_obs, kpt_pos, T_t_h, cam, res);
 
                 if (valid) {
@@ -198,6 +200,8 @@ void BundleAdjustmentBase<Scalar_>::computeError(
                   local_error += Scalar(0.5) * (2 - huber_weight) * obs_weight *
                                  res.transpose() * res;
                 } else {
+                  // hm: the projection completely failed, assign the constant scalar to that TimeCamId
+                  // hm: -2 means that observation is at the landmark's host frame
                   if (outliers) {
                     outliers_concurrent[kpt_id].emplace_back(
                         tcid_t, tcid_h != tcid_t ? -1 : -2);
@@ -273,10 +277,8 @@ void BundleAdjustmentBase<Scalar_>::filterOutliers(Scalar outlier_threshold,
   std::map<int, std::vector<std::pair<TimeCamId, Scalar>>> outliers;
   computeError(error, &outliers, outlier_threshold);
 
-  //  std::cout << "============================================" <<
-  //  std::endl; std::cout << "Num landmarks: " << lmdb.numLandmarks() << "
-  //  with outliners
-  //  "
+  //  std::cout << "============================================" << std::endl; 
+  //  std::cout << "Num landmarks: " << lmdb.numLandmarks() << " with outliners "
   //            << outliers.size() << std::endl;
 
   for (const auto& kv : outliers) {
@@ -291,6 +293,7 @@ void BundleAdjustmentBase<Scalar_>::filterOutliers(Scalar outlier_threshold,
     //              << " outliers: " << num_outliers << " [";
 
     for (const auto& kv2 : kv.second) {
+      // hm: if -2, means such a outlier happens at landmark's host frame. Time to remove everything
       if (kv2.second == -2) remove = true;
 
       //      std::cout << kv2.second << ", ";
@@ -300,6 +303,7 @@ void BundleAdjustmentBase<Scalar_>::filterOutliers(Scalar outlier_threshold,
 
     if (remove) {
       lmdb.removeLandmark(kv.first);
+      std::cout << "filterOutliers: remove landmark " << kv.first << std::endl;
     } else {
       std::set<TimeCamId> outliers;
       for (const auto& kv2 : kv.second) outliers.emplace(kv2.first);

@@ -68,8 +68,8 @@ struct VioConfig {
   bool vio_debug;
   bool vio_extended_logging;
 
-  //  double vio_outlier_threshold;
-  //  int vio_filter_iteration;
+   double vio_outlier_threshold;
+   int vio_filter_iteration;
   int vio_max_iterations;
 
   double vio_obs_std_dev;

@@ -72,8 +72,8 @@ VioConfig::VioConfig() {
   vio_obs_std_dev = 0.5;
   vio_obs_huber_thresh = 1.0;
   vio_min_triangulation_dist = 0.05;
-  //  vio_outlier_threshold = 3.0;
-  //  vio_filter_iteration = 4;
+   vio_outlier_threshold = 3.0;
+   vio_filter_iteration = 4;
   vio_max_iterations = 7;
 
   vio_enforce_realtime = false;
@@ -185,8 +185,8 @@ void serialize(Archive& ar, basalt::VioConfig& config) {
   ar(CEREAL_NVP(config.vio_debug));
   ar(CEREAL_NVP(config.vio_extended_logging));
   ar(CEREAL_NVP(config.vio_max_iterations));
-  //  ar(CEREAL_NVP(config.vio_outlier_threshold));
-  //  ar(CEREAL_NVP(config.vio_filter_iteration));
+   ar(CEREAL_NVP(config.vio_outlier_threshold));
+   ar(CEREAL_NVP(config.vio_filter_iteration));
 
   ar(CEREAL_NVP(config.vio_obs_std_dev));
   ar(CEREAL_NVP(config.vio_obs_huber_thresh));
